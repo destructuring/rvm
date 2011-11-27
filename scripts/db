@@ -70,6 +70,7 @@ else
         cp "$database_file" "$database_file.new"
         echo "$escaped_key=$value" >> "$database_file.new"
         sort -u "$database_file.new" > "$database_file"
+        rm -f "$database_file.new"
       else # overwrite
         \sed -i.tmp "s#^$escaped_key=.*\$#$escaped_key=$value#" "$database_file" | sort > "$database_file.new"
 
