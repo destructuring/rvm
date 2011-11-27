@@ -67,7 +67,7 @@ else
 
       if [[ -z "$(awk -F= "/^'"$escaped_key"'=/{print $2}" "$database_file")" ]]
       then # append
-        cp "$database_file" >> "$database_file.new"
+        cp "$database_file" "$database_file.new"
         echo "$escaped_key=$value" >> "$database_file.new"
         sort -u "$database_file.new" > "$database_file"
       else # overwrite
