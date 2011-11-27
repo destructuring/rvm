@@ -213,19 +213,6 @@ __rvm_install_source()
     fi
   fi
 
-  # Ruby 1.9 should now use libyaml which is for Psych.
-  case ${rvm_ruby_string} in
-    ruby-1.9*)
-      libyaml # Installs libyaml
-      if [[ -n "${rvm_configure_flags:-}" ]]
-      then
-        rvm_configure_flags="${rvm_configure_flags} --with-libyaml-dir=${rvm_path}/usr"
-      else
-        rvm_configure_flags="--with-libyaml-dir=${rvm_path}/usr"
-      fi
-      ;;
-  esac
-
   if [[ -n "${rvm_ruby_configure:-""}" ]]
   then
     __rvm_run "configure" "$rvm_ruby_configure"
