@@ -50,7 +50,7 @@ else
   if [[ "unset" == "$value" || "delete" == "$value" ]]
   then
     \sed -e "s#^$escaped_key=.*\$##"  -e '/^$/d' "$database_file" \
-      > "$database_file.new"
+      | sort > "$database_file.new"
 
     mv "$database_file.new" "$database_file"
   else
@@ -59,17 +59,19 @@ else
       [[ -s "${database_file}" ]] || exit 0 # File is empty, nothing to get.
 
       \awk -F= '/^'"$escaped_key"'=/' "$database_file" \
-        | \sed -e "s#^$escaped_key=##" -e '/^$/d'
+        | \sed -e "s#^$escaped_key=##" -e '/^$/d' | sort
     else # set
-      \sed -e "s#^$escaped_key=.*\$##" -e '/^$/d' "$database_file" > "$database_file.new"
+      \sed -e "s#^$escaped_key=.*\$##" -e '/^$/d' "$database_file" | sort > "$database_file.new"
 
       mv "$database_file.new" "$database_file"
 
       if [[ -z "$(awk -F= "/^'"$escaped_key"'=/{print $2}" "$database_file")" ]]
       then # append
-        echo "$escaped_key=$value" >> "$database_file"
+        cp "$database_file" >> "$database_file.new"
+        echo "$escaped_key=$value" >> "$database_file.new"
+        sort -u "$database_file.new" > "$database_file"
       else # overwrite
-        \sed -i.tmp "s#^$escaped_key=.*\$#$escaped_key=$value#" "$database_file" > "$database_file.new"
+        \sed -i.tmp "s#^$escaped_key=.*\$#$escaped_key=$value#" "$database_file" | sort > "$database_file.new"
 
         mv "$database_file.new" "$database_file"
       fi
