@@ -10,7 +10,7 @@ source "$rvm_scripts_path/initialize"
 
 usage()
 {
-  printf "
+  printf "%b" "
   Usage:
 
     rvm wrapper [ruby_string] [wrapper_prefix] [binary[ binary[ ...]]]
@@ -58,7 +58,7 @@ wrap()
       path="${rvm_path:-"$HOME/.rvm"}"
     fi
 
-    printf "#!/usr/bin/env bash
+    printf "%b" "#!/usr/bin/env bash
 
 if [[ -s \"$path/environments/${environment_identifier}\" ]]
 then
@@ -97,7 +97,7 @@ symlink_binary()
 wrap_binary()
 {
   # We wrap when the given binary is in the path or override_check is set to one.
-  if [[ "$override_check" == "1" ]] || command -v $binary_name > /dev/null
+  if [[ "$override_check" == "1" ]] || builtin command -v $binary_name > /dev/null
   then
     wrap
   else

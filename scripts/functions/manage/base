@@ -1,36 +1,11 @@
 #!/usr/bin/env bash
 
-__rvm_check_for_clang()
-{
-  if (( ${rvm_clang_flag:=0} == 1 )) && ! command -v clang >/dev/null
-  then
-    rvm_error "\nYou passed the --clang option and clang is not in your path. \nPlease try again or do not use --clang.\n"
-    return 1
-  fi
-}
-
-# Checks for bison, returns zero iff it is found
-__rvm_check_for_bison()
-{
-  true ${rvm_head_flag:=0}
-  if (( rvm_head_flag > 0 ))
-  then
-    command -v bison > /dev/null
-    result=$?
-    if (( result > 0 ))
-    then
-      rvm_error "\nbison is not available in your path. \nPlease ensure bison is installed before compiling from head.\n"
-    fi
-  fi
-  return ${result:-0}
-}
-
 # Emits a number of patches to STDOUT, each on a new name
 # Expands patchsets etc.
 __rvm_current_patch_names()
 {
   # TODO: Lookup default patches on rvm_ruby_string heirarchy.
-  local separator patches level name
+  typeset separator patches level name
 
   separator="%"
   patches="${rvm_patch_names:-""} default"
@@ -45,7 +20,8 @@ __rvm_current_patch_names()
       name="${name//${separator}*/}"
     fi
 
-    local expanded_name="$( __rvm_expand_patch_name "$name" )"
+    typeset expanded_name
+    expanded_name="$( __rvm_expand_patch_name "$name" )"
     if [[ -n "${name}" && -n "${expanded_name}" ]]
     then
       echo "${expanded_name}${separator}${level}"
@@ -57,11 +33,11 @@ __rvm_current_patch_names()
 
 __rvm_apply_patches()
 {
-  local patches patch_name patch_level_separator patch_fuzziness patch_level source_directory full_patch_path
+  typeset patches patch_name patch_level_separator patch_fuzziness patch_level source_directory full_patch_path
 
   result=0
   patch_level_separator="%"
-  patch_fuzziness="25"
+  patch_fuzziness="25" # max fuziness that makes sense is 3 (or there are patches with bigger context ?)
   patch_level=1
 
   source_directory="${1:-""}"
@@ -94,7 +70,7 @@ __rvm_apply_patches()
         if [[ -f "$full_patch_path" ]]
         then
           __rvm_run "patch.apply.${patch_name/*\/}" \
-            "patch -F$patch_fuzziness -p$patch_level -f <\"$full_patch_path\"" \
+            "patch -F $patch_fuzziness -p$patch_level -N -f <\"$full_patch_path\"" \
             "Applying patch '$patch_name' (located at $full_patch_path)"
           if (( $? > 0 ))
           then
@@ -114,9 +90,9 @@ __rvm_apply_patches()
 
 __rvm_install_source()
 {
-  true ${rvm_force_flag:=0} ${rvm_ruby_selected_flag:=0} ${rvm_static_flag:=0}
+  true ${rvm_ruby_selected_flag:=0} ${rvm_static_flag:=0}
 
-  local directory configure_parameters db_configure_flags
+  typeset directory configure_parameters db_configure_flags autoconf_flags
 
   if (( rvm_ruby_selected_flag == 0 ))
   then
@@ -125,31 +101,9 @@ __rvm_install_source()
 
   __rvm_setup_compile_environment
 
-  case ${rvm_ruby_string:-""} in
-    ruby-1.8*|ree*|ruby-1.9*)
-      true # carry on then, nothing to see here :P
-      ;;
-    ruby-head|1.9.*-head)
-      if ! __rvm_ensure_has_mri_ruby "1.8.|ree"
-      then
-        return 1
-      fi
-      ;;
-  esac
-
   rvm_log "Installing Ruby from source to: $rvm_ruby_home, this may take a while depending on your cpu(s)...\n"
 
   builtin cd "${rvm_src_path}"
-
-  if (( rvm_force_flag == 1 ))
-  then
-    for directory in "$rvm_ruby_home" "${rvm_src_path}/$rvm_ruby_string"
-    do
-      __rvm_rm_rf "$directory"
-    done
-  fi
-
-  result=0
 
   __rvm_fetch_ruby
   result=$?
@@ -202,11 +156,16 @@ __rvm_install_source()
 
   if [[ -z "${rvm_ruby_configure:-""}" \
     && (! -s "${rvm_src_path}/$rvm_ruby_string/configure" \
-        || "${rvm_src_path}/$rvm_ruby_string/configure.in" -nt "${rvm_src_path}/$rvm_ruby_string/configure") ]]
+        || "${rvm_src_path}/$rvm_ruby_string/configure.in" -nt "${rvm_src_path}/$rvm_ruby_string/configure") ]] ||
+      (( ${rvm_force_autoconf_flag:-0} == 1 ))
   then
-    if command -v autoreconf > /dev/null
+    if builtin command -v autoreconf > /dev/null
     then
-      __rvm_run "autoreconf" "autoreconf" "Running autoreconf"
+      if (( ${rvm_force_autoconf_flag:-0} == 1 ))
+      then
+        autoconf_flags=" -f"
+      fi
+      __rvm_run "autoreconf" "autoreconf${autoconf_flags:-}" "$rvm_ruby_string - #autoreconf${autoconf_flags:-}"
     else
       rvm_error "rvm requires autoreconf to install the selected ruby interpreter however autoreconf was not found in the PATH."
       exit 1
@@ -236,7 +195,8 @@ __rvm_install_source()
     # to point to an expanded path.
     case "${rvm_ruby_string:-""}" in
       ruby-head|ruby-1.9.3-head)
-        local compatible_baseruby="$rvm_wrappers_path/$(__rvm_mri_ruby "1.8|ree")/ruby"
+        typeset compatible_baseruby
+        compatible_baseruby="$rvm_wrappers_path/$(__rvm_mri_ruby "1.8|ree")/ruby"
         if [[ -x "$compatible_baseruby" ]]
         then
           configure_parameters="--with-baseruby=$compatible_baseruby"
@@ -244,7 +204,8 @@ __rvm_install_source()
       ;;
     esac
 
-    local configure_command="${rvm_configure_env:-""} ./configure --prefix=$rvm_ruby_home ${db_configure_flags:-""} ${rvm_configure_flags:-""} ${configure_parameters:-""}"
+    typeset configure_command
+    configure_command="${rvm_configure_env:-""} ./configure --prefix=$rvm_ruby_home ${db_configure_flags:-""} ${rvm_configure_flags:-""} ${configure_parameters:-""}"
 
     __rvm_run "configure" "$configure_command" "$rvm_ruby_string - #configuring "
     result=$?
@@ -282,10 +243,24 @@ __rvm_install_source()
     return $result
   fi
 
+  : rvm_configure_flags:${rvm_configure_flags:=}:
+  case "${rvm_configure_flags}" in
+    (*--program-suffix=*)
+      typeset program_suffix
+      program_suffix="${rvm_configure_flags#*--program-suffix=}"
+      program_suffix="${program_suffix%%[\' ]*}"
+      __rvm_run "link.ruby" "ln -s \"$rvm_ruby_home/bin/ruby${program_suffix}\" \
+        \"$rvm_ruby_home/bin/ruby\"" "$rvm_ruby_string - #linking ruby${program_suffix} -> ruby "
+      ;;
+  esac
+
   export GEM_HOME="$rvm_ruby_gem_home"
   export GEM_PATH="$rvm_ruby_gem_path"
 
-  "$rvm_scripts_path/rubygems" ${rvm_rubygems_version:-latest}
+  (
+    __rvm_use
+    "$rvm_scripts_path/rubygems" ${rvm_rubygems_version:-latest}
+  )
   result=$?
 
   __rvm_bin_script
@@ -302,39 +277,47 @@ __rvm_install_source()
 
 __rvm_install_ruby()
 {
-  true ${rvm_head_flag:=0} ${rvm_ruby_selected_flag:=0} ${rvm_force_flag:=0}
+  true ${rvm_head_flag:=0} ${rvm_ruby_selected_flag:=0}
 
-  local binary
+  typeset binary __rvm_ruby_name
 
   if (( rvm_ruby_selected_flag == 0 ))
   then
+    __rvm_ruby_name="$rvm_ruby_name"
     __rvm_select || return $?
+    if [[ -n "$__rvm_ruby_name" ]]
+    then
+      __rvm_select || return $?
+      if [[ "$__rvm_ruby_name" != "$detected_rvm_ruby_name" ]]
+      then
+        rvm_error "
+The used ruby name (-n) is not valid, it was matched as:
+
+$( env | grep "^rvm.*=$__rvm_ruby_name$" || printf "# Was not used at all\n")
+
+for more details on selecting names please visit:
+https://rvm.beginrescueend.com/rubies/named/
+" #" fix escaping
+        return 1
+      fi
+    fi
   fi
 
   if [[ -n "${RUBYOPT:-""}" ]]
-  then
-    ruby_options="$RUBYOPT"
+  then ruby_options="$RUBYOPT"
   fi
 
   unset RUBYOPT
 
-  # Check for clang if the flag is set
-  __rvm_check_for_clang
-  result=$?
-  if (( result > 0 ))
-  then
-    return $result
+  if __rvm_check_for_compiler
+  then true # sok
+  else return $?
   fi
 
-  case "$rvm_ruby_interpreter" in
-    macruby)
-      source "$rvm_scripts_path/functions/manage/macruby"
-      macruby_install
-    ;;
-
-    ree)
-      source "$rvm_scripts_path/functions/manage/ree"
-      ree_install
+  case "${rvm_ruby_interpreter}" in
+    macruby|ree|jruby|maglev|goruby)
+      source "$rvm_scripts_path/functions/manage/${rvm_ruby_interpreter}"
+      ${rvm_ruby_interpreter}_install
     ;;
 
     rbx|rubinius)
@@ -342,27 +325,12 @@ __rvm_install_ruby()
       rbx_install
     ;;
 
-    jruby)
-      source "$rvm_scripts_path/functions/manage/jruby"
-      jruby_install
-    ;;
-
-    maglev)
-      source "$rvm_scripts_path/functions/manage/maglev"
-      maglev_install
-      ;;
-
     ironruby|ir)
       source "$rvm_scripts_path/functions/manage/ironruby"
       ironruby_install
       ;;
 
-    goruby)
-      source "$rvm_scripts_path/functions/manage/goruby"
-      goruby_install
-      ;;
-
-    ruby|kiji)
+    ruby|kiji|tcs)
       source "$rvm_scripts_path/functions/manage/ruby"
       ruby_install
       ;;
@@ -389,8 +357,6 @@ __rvm_install_ruby()
     RUBYOPT="$ruby_options"
     export RUBYOPT
   fi
-
-  return ${result:-0}
 }
 
 __rvm_fetch_from_github()
@@ -420,11 +386,13 @@ __rvm_fetch_from_github()
       __rvm_run "$1.repo" "git clone --depth 1 $rvm_ruby_repo_http_url ${rvm_repos_path}/${rvm_ruby_interpreter}" "Cloning $rvm_ruby_repo_http_url"
     fi
   else
-    local branch="${rvm_ruby_repo_branch:-"master"}"
+    typeset branch
+    branch="${rvm_ruby_repo_branch:-"master"}"
 
     builtin cd "${rvm_repos_path}/${rvm_ruby_interpreter}"
 
-    __rvm_run "$1.repo" "git reset --hard HEAD ; git pull --rebase origin $branch" "Pulling from origin $branch"
+    __rvm_run "$1.clean" "git checkout -f master ; git reset --hard HEAD ; rm -fr .git/rebase-apply" "Cleaning git repo"
+    __rvm_run "$1.fetch" "git fetch origin" "Fetching from origin"
   fi
 
   (
@@ -444,6 +412,8 @@ __rvm_fetch_from_github()
         rvm_error "Branch $remote/$rvm_ruby_repo_branch not found."
       fi
     fi
+
+    __rvm_run "$1.pull" "git pull origin $branch" "Pulling from origin $branch"
   )
 
   if [[ -n "${rvm_ruby_string}" ]]
@@ -516,18 +486,14 @@ __rvm_fetch_ruby()
     # Remove the directory if it is empty
     ( [[ ! -d "${rvm_src_path}/$rvm_ruby_string" ]] || rmdir "${rvm_src_path}/$rvm_ruby_string" 2>/dev/null ) || true
 
-    if [[ ! -d "${rvm_src_path}/$rvm_ruby_string" ]] ||
-      (( ${rvm_force_flag:=0} == 1 ))
+    if [[ ! -d "${rvm_src_path}/$rvm_ruby_string" ]]
     then
-      # Especially when forced, we want to ensure the destination is missing.
-      __rvm_rm_rf "${rvm_src_path}/${rvm_ruby_string}"
-
       mkdir -p "${rvm_tmp_path:-/tmp}/rvm_src_$$"
 
       case "$rvm_archive_extension" in
         tar.gz|tgz)
           __rvm_run "extract" \
-            "tar xzf \"${rvm_archives_path}/$rvm_ruby_package_file.$rvm_archive_extension\" -C ${rvm_tmp_path:-/tmp}/rvm_src_$$ --no-same-owner" \
+            "$rvm_tar_command xzf \"${rvm_archives_path}/$rvm_ruby_package_file.$rvm_archive_extension\" -C ${rvm_tmp_path:-/tmp}/rvm_src_$$ ${rvm_tar_options:-}" \
             "$rvm_ruby_string - #extracting $rvm_ruby_package_file to ${rvm_src_path}/$rvm_ruby_string"
           result=$?
 
@@ -551,7 +517,7 @@ __rvm_fetch_ruby()
           ;;
         tar.bz2)
           __rvm_run "extract" \
-            "tar xjf ${rvm_archives_path}/$rvm_ruby_package_file.$rvm_archive_extension -C ${rvm_tmp_path:-/tmp}/rvm_src_$$" \
+            "$rvm_tar_command xjf ${rvm_archives_path}/$rvm_ruby_package_file.$rvm_archive_extension -C ${rvm_tmp_path:-/tmp}/rvm_src_$$ ${rvm_tar_options:-}" \
             "$rvm_ruby_string - #extracting $rvm_ruby_package_file to ${rvm_src_path}/$rvm_ruby_string"
           result=$?
 
@@ -665,12 +631,12 @@ __rvm_fetch_ruby()
           case "$(git branch 2>/dev/null)" in
             (*[[:space:]]${rvm_ruby_repo_branch}*)
               # Not already on the desired branch, but it does exist locally.
-              git checkout "${rvm_ruby_repo_branch}" # Branch is local, checkout
+              git checkout -f "${rvm_ruby_repo_branch}" # Branch is local, checkout
               git pull "$remote" "${rvm_ruby_repo_branch}" # Bring local to latest
               ;;
             (*)
               # Desired branch does not exist locally.
-              if git checkout -t "${remote}/${rvm_ruby_repo_branch}"
+              if git checkout -f -t "${remote}/${rvm_ruby_repo_branch}"
               then
                 true
               else
@@ -683,7 +649,7 @@ __rvm_fetch_ruby()
         fi
 
         if [[ -n "${rvm_ruby_tag:-}" ]]
-        then git checkout ${rvm_ruby_tag} ; fi
+        then git checkout -f -q ${rvm_ruby_tag#t} ; fi
 
         return $?
       )
@@ -701,7 +667,7 @@ __rvm_fetch_ruby()
         (
           cd "${rvm_repos_path}/${rvm_ruby_interpreter}"
           [[ "$rvm_ruby_revision" != "head" ]] || rvm_ruby_revision="master"
-          git checkout "${rvm_ruby_revision}"
+          git checkout -f "${rvm_ruby_revision}"
         )
         result=$?
 
@@ -714,7 +680,7 @@ __rvm_fetch_ruby()
       then
         (
           cd "${rvm_repos_path}/${rvm_ruby_interpreter}"
-          git checkout ${rvm_ruby_sha#s}
+          git checkout -f ${rvm_ruby_sha#s}
         )
         result=$?
 
@@ -807,7 +773,7 @@ __rvm_fetch_ruby()
 
 __rvm_check_default()
 {
-  local default_ruby_interpreter current_ruby_interpreter
+  typeset default_ruby_interpreter current_ruby_interpreter
 
   default_ruby_interpreter="$(rvm alias show default 2>/dev/null \
     | awk -F"${rvm_gemset_separator:-"@"}" '{print $1}')"
@@ -816,7 +782,7 @@ __rvm_check_default()
     | awk -F"${rvm_gemset_separator:-"@"}" '{print $1}')"
 
   if [[ -n "$current_ruby_interpreter" &&
-        "$current_ruby_interpreter" = "$default_ruby_interpreter" ]]
+        "$current_ruby_interpreter" == "$default_ruby_interpreter" ]]
   then
     __rvm_run_with_env 'default.restore' 'system' \
       'rvm use system --default' 'Removing default ruby interpreter'
@@ -827,7 +793,7 @@ __rvm_check_default()
 
 __rvm_uninstall_ruby()
 {
-  local dir
+  typeset dir
 
   if (( ${rvm_ruby_selected_flag:=0} == 0 ))
   then
@@ -841,22 +807,25 @@ __rvm_uninstall_ruby()
       if [[ -d "$dir/$rvm_ruby_string" ]]
       then
         rvm_log "Removing $dir/$rvm_ruby_string..."
-
         __rvm_rm_rf "$dir/$rvm_ruby_string"
       else
         rvm_log "$dir/$rvm_ruby_string has already been removed."
       fi
-
-      if [[ -e "${rvm_bin_path}/$rvm_ruby_string" ]]
-      then
-        rm -f "${rvm_bin_path}/$rvm_ruby_string"
-      fi
     done
 
+    if [[ -e "${rvm_bin_path}/$rvm_ruby_string" ]]
+    then
+      rm -f "${rvm_bin_path}/$rvm_ruby_string"
+    fi
+
+    if [[ -d "${rvm_externals_path}/$rvm_ruby_string" ]]
+    then
+      rvm_log "Removing ${rvm_externals_path}/$rvm_ruby_string..."
+      __rvm_rm_rf "${rvm_externals_path}/$rvm_ruby_string"
+    fi
+
     __rvm_remove_install_record "$rvm_ruby_string"
-
     __rvm_remove_gemsets
-
     __rvm_check_default
   else
     rvm_error "Cannot uninstall unknown package '$rvm_ruby_string'"
@@ -869,7 +838,7 @@ __rvm_uninstall_ruby()
 
 __rvm_remove_ruby()
 {
-  local dir
+  typeset dir
 
   if (( ${rvm_ruby_selected_flag:=0} == 0 ))
   then
@@ -887,16 +856,18 @@ __rvm_remove_ruby()
       else
         rvm_log "it seems that $dir/$rvm_ruby_string is already non existent."
       fi
-
-      if [[ -e "${rvm_bin_path}/$rvm_ruby_string" ]]
-      then
-        rm -f "${rvm_bin_path}/$rvm_ruby_string"
-      fi
-
-      __rvm_check_default
-
     done
+    if [[ -e "${rvm_bin_path}/$rvm_ruby_string" ]]
+    then
+      rm -f "${rvm_bin_path}/$rvm_ruby_string"
+    fi
 
+    if [[ -d "${rvm_externals_path}/$rvm_ruby_string" ]]
+    then
+      rvm_log "Removing ${rvm_externals_path}/$rvm_ruby_string..."
+      __rvm_rm_rf "${rvm_externals_path}/$rvm_ruby_string"
+    fi
+    __rvm_check_default
     __rvm_remove_install_record "$rvm_ruby_string"
     __rvm_remove_gemsets
     __rvm_remove_archives
@@ -920,20 +891,21 @@ __rvm_remove_ruby()
 
 __rvm_reinstall_ruby()
 {
-  local _params=("$@")
+  typeset _params
+  _params=("$@")
   __rvm_remove_ruby "${_params[@]}"
   __rvm_install_ruby "${_params[@]}"
 }
 
 __rvm_remove_gemsets()
 {
-  local gemset gemsets
+  typeset gemset gemsets
 
   if (( ${rvm_gems_flag:=0} == 1 ))
   then
     rvm_log "Removing $rvm_ruby_string gemsets..."
 
-    gemsets=( $(find "${rvm_gems_path:-"$rvm_path/gems"}" -maxdepth 1 "${name_opt}" "${rvm_ruby_string}*" -type d))
+    gemsets=( $(find -L "${rvm_gems_path:-"$rvm_path/gems"}" -maxdepth 1 "${name_opt}" "${rvm_ruby_string}*" -type d))
 
     for gemset in "${gemsets[@]}"
     do
@@ -949,7 +921,7 @@ __rvm_remove_wrappers()
 {
   rvm_log "Removing $rvm_ruby_string wrappers..."
 
-  local wrapper wrappers
+  typeset wrapper wrappers
 
   wrappers=($(find "$rvm_wrappers_path" -maxdepth 1 -mindepth 1 -type d "${name_opt}" "*$rvm_ruby_string*" 2>/dev/null))
 
@@ -965,7 +937,7 @@ __rvm_remove_environments()
 {
   rvm_log "Removing $rvm_ruby_string environments..."
 
-  local environments environment
+  typeset environments environment
 
   environments=($(find "$rvm_environments_path" -maxdepth 1 -mindepth 1 -type f "${name_opt}" "*$rvm_ruby_string*" ))
 
@@ -984,7 +956,7 @@ __rvm_remove_aliases()
 {
   rvm_log "Removing $rvm_ruby_string aliases..."
 
-  local alias_name aliases
+  typeset alias_name aliases
 
   aliases=($(awk '/'$rvm_ruby_string'/' "$rvm_path/config/alias" | sed 's/=.*//'))
 
@@ -1009,7 +981,7 @@ __rvm_remove_binaries()
   rvm_log "Removing $rvm_ruby_string binaries..."
 
   # Iterate over all binaries and check for symlinked wrappers etc.
-  local binary_name binaries full_binary_path
+  typeset binary_name binaries full_binary_path
 
   binaries=($(find "${rvm_bin_path}" -maxdepth 1 -mindepth 1 "${name_opt}" "*$rvm_ruby_string*" ))
 
@@ -1027,10 +999,9 @@ __rvm_remove_binaries()
 
 __rvm_post_install()
 {
-  local rvm_ruby_aliases ruby_alias binary
-
-  if [[ "$rvm_ruby_interpreter" != "jruby" ]]
-  then
+  case "$rvm_ruby_interpreter" in
+  (jruby|ree) true ;; #skip
+  (*)
     (( ${#binaries[@]} > 0 )) || binaries=(gem irb erb ri rdoc testrb rake)
 
     rvm_log "$rvm_ruby_string - adjusting #shebangs for (${binaries[@]})."
@@ -1058,7 +1029,8 @@ __rvm_post_install()
     done
 
     binaries=(gem irb erb ri rdoc testrb rake)
-  fi
+    ;;
+  esac
 
   # Import the initial gemsets.
   __rvm_run_with_env "gemsets.initial" "$rvm_ruby_string" \
@@ -1068,18 +1040,6 @@ __rvm_post_install()
   __rvm_irbrc
 
   __rvm_generate_default_docs
-
-  if [[ -n "$rvm_ruby_aliases" ]]
-  then
-    rvm_log "Setting up aliases for $rvm_ruby_string"
-
-    while read -r ruby_alias
-    do
-      rvm_log "Aliasing $rvm_ruby_string to $ruby_alias"
-      "$rvm_scripts_path/alias" delete "$ruby_alias" > /dev/null 2>&1
-      "$rvm_scripts_path/alias" create "$ruby_alias" "$rvm_ruby_string" > /dev/null 2>&1
-    done < <(printf "$rvm_ruby_string" | \tr ' ' '\n' | sort -u)
-  fi
 }
 
 __rvm_generate_default_docs()
@@ -1093,7 +1053,7 @@ __rvm_generate_default_docs()
 
 __rvm_inject_ruby_shebang()
 {
-  local actual_file
+  typeset actual_file
 
   __rvm_actual_file $1
 
@@ -1106,7 +1066,7 @@ __rvm_inject_ruby_shebang()
 
 __rvm_inject_gem_env()
 {
-  local actual_file string
+  typeset actual_file string
 
   __rvm_actual_file $1
 
@@ -1147,7 +1107,7 @@ __rvm_actual_file()
 
 __rvm_manage_rubies()
 {
-  local manage_result bin_line
+  typeset manage_result bin_line
 
   manage_result=0
 
@@ -1156,9 +1116,6 @@ __rvm_manage_rubies()
 
   rvm_ruby_gem_home="${rvm_ruby_gem_home:-""//${rvm_gemset_separator:-"@"}*}"
   rvm_ruby_string="${rvm_ruby_string:-""//${rvm_gemset_separator:-"@"}*}"
-
-  # TODO: See if this can work, currently errors out on 'cannot find i386' libs.
-  # __rvm_setup_compile_environment
 
   # Given list of ruby strings.
   if [[ -n "${rubies_string:-""}" ]]
@@ -1192,7 +1149,7 @@ __rvm_manage_rubies()
     if [[ "$action" != "install" && "$action" != "remove" &&
       "$action" != "uninstall" ]]
     then
-      local ruby_string
+      typeset ruby_string
 
       while read -r ruby_string
       do # Keep this on second line damnit!

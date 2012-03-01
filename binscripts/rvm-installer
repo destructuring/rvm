@@ -6,13 +6,39 @@ export PS4
 set -o errtrace
 set -o errexit
 
-log()  { printf "$*\n" ; return $? ;  }
+export rvm_tar
+export rvm_uname
+
+rvm_uname=$(uname)
+case "$rvm_uname" in
+    OpenBSD)
+        rvm_tar=gtar
+        ;;
+    *)
+        rvm_tar=tar
+        ;;
+esac
+
+log()  { printf "%b\n" "$*" ; return $? ;  }
 
 fail() { log "\nERROR: $*\n" ; exit 1 ; }
 
+if [[ -z "${rvm_tar_command:-}" ]] && builtin command -v gtar >/dev/null
+then
+  rvm_tar_command=gtar
+else
+  rvm_tar_command=tar
+fi
+if [[ ! " ${rvm_tar_options:-} " =~ " --no-same-owner "  ]] && \
+  $rvm_tar_command --help | \grep -- --no-same-owner >/dev/null
+then
+  rvm_tar_options="${rvm_tar_options:-} --no-same-owner"
+  rvm_tar_options="${rvm_tar_options## }"
+fi
+
 usage()
 {
-  printf "
+  printf "%b" "
 
 Usage
 
@@ -26,7 +52,20 @@ Options
 
 Actions
 
-  help - Display CLI help (this output)
+  stable - Install RVM stable branch from wayneeseguin rvm repo.
+  help   - Display CLI help (this output)
+
+Branches:
+
+  branch <branch>
+  branch /<branch>
+  branch <repo>/
+  branch <repo>/<branch>
+
+  Defaults:
+
+    branch: master
+    repo:   wayneeseguin
 
 "
 }
@@ -45,7 +84,7 @@ md5_match()
 {
   local archive="$1"
 
-  case "$(uname)" in
+  case "$rvm_uname" in
     Darwin|FreeBSD)
       archive_md5="$(/sbin/md5 -q "${archive}")"
       ;;
@@ -107,62 +146,82 @@ Halting installation.
 "
   fi
 
-  if tar zxf "${archive}" -C "$rvm_src_path/" --no-same-owner
+  if $rvm_tar_command xzf "${archive}" -C "$rvm_src_path/" ${rvm_tar_options:-}
   then
     cd "$rvm_src_path/rvm-${version}"
   else
     fail "Failed to extract ${archive} to ${rvm_src_path}/,"\
-      "tar command returned error code $?"
+      "$rvm_tar_command command returned error code $?"
   fi
 }
 
 install_head()
 {
-  local remote="origin"
+  typeset _repo _name _branch _local_branch
+  case "$1" in
+    (/*)
+      _repo=wayneeseguin
+      _branch=${1#/}
+      ;;
+    (*/)
+      _repo=${1%/}
+      _branch=master
+      ;;
+    (*/*)
+      _repo=${1%/*}
+      _branch=${1#*/}
+      ;;
+    (*)
+      _repo=wayneeseguin
+      _branch=$1
+      ;;
+  esac
 
-  if [[ -d "${rvm_src_path}/rvm/.git" ]]
+  log "Downloading RVM from ${_repo} branch ${_branch}"
+  if curl -L https://github.com/${_repo}/rvm/tarball/${_branch} -o ${rvm_archives_path}/${_repo}-rvm-${_branch}.tgz
   then
-    builtin cd "${rvm_src_path}/rvm/"
-
-    if [[ -z "$(git branch | awk "/$branch$/")" ]]
-    then
-      if git checkout -b "$branch" --track "$remote/$branch" 2>/dev/null
-      then
-        log "Successfully checked out branch '$branch'"
-      else
-        fail "$remote $branch remote branch not found."
-      fi
-    elif [[ -z "$(git branch | awk "/\* $branch$/{print \$2}")" ]]
-    then
-      if git checkout $branch 2>/dev/null
-      then
-        log "Successfully checked out branch '$branch'"
-      else
-        fail "Unable to checkout branch $branch."
-      fi
-    fi
-
-    if git pull --rebase $remote $branch
-    then
-      log "Successfully pulled (rebased) from $remote $branch"
-    else
-      fail "Failed pull/rebase $remote $branch"
-    fi
+    true
   else
-    builtin cd "${rvm_src_path}"
-
-    if ! git clone --depth 1 git://github.com/wayneeseguin/rvm.git
-    then
-      if !  git clone https://github.com/wayneeseguin/rvm.git
-      then
-        fail "Unable to clone the RVM repository, attempted both git:// and https://"
-      fi
-    fi
+    typeset ret=$?
+    case $ret in
+      (60)
+        log "
+Could not download 'https://github.com/${_repo}/rvm/tarball/${_branch}'.
+  Make sure your certificates are up to date as described above.
+  To continue in insecure mode run 'echo insecure >> ~/.curlrc'.
+"
+        return 60
+        ;;
+      (*)
+        log "
+Could not download 'https://github.com/${_repo}/rvm/tarball/${_branch}'.
+  curl returned status '$ret'.
+"
+        return 1
+        ;;
+    esac
   fi
 
-  builtin cd "${rvm_src_path}/rvm/"
+  [[ -d "${rvm_src_path}/rvm" ]] || \mkdir -p "${rvm_src_path}/rvm"
+  if ! builtin cd "${rvm_src_path}/rvm"
+  then
+    log "Could not change directory '${rvm_src_path}/rvm'."
+    return 2
+  fi
 
-  return 0
+  rm -rf ${rvm_src_path}/rvm/*
+  if ! $rvm_tar_command xzf ${rvm_archives_path}/${_repo}-rvm-${_branch}.tgz ${rvm_tar_options:-}
+  then
+    log "Could not extract RVM sources."
+    return 3
+  fi
+
+  if ! mv ${_repo}-rvm-*/* .
+  then
+    log "Could not move RVM sources path."
+    return 4
+  fi
+  rm -rf ${_repo}-rvm-*
 }
 
 # Tracing, if asked for.
@@ -186,9 +245,11 @@ then
     then
       if \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
       then
-        printf "\nError: $rvmrc is for rvm settings only.\n"
-        printf "rvm CLI may NOT be called from within $rvmrc. \n"
-        printf "Skipping the loading of $rvmrc\n"
+        printf "%b" "
+Error: $rvmrc is for rvm settings only.
+rvm CLI may NOT be called from within $rvmrc.
+Skipping the loading of $rvmrc
+"
         return 1
       else
         source "$rvmrc"
@@ -241,33 +302,48 @@ do
       fi
       ;;
 
-    --user-install)
-      rvm_user_install_flag=1
+    --user-install|--auto)
+      token=${token#--}
+      token=${token//-/_}
+      export "rvm_${token}_flag"=1
+      printf "%b" "Turning on ${token/_/ } mode.\n"
       ;;
 
     --version)
       case "$1" in
         +([[:digit:]]).+([[:digit:]]).+([[:digit:]]))
           version="$1"
-          shift
           ;;
-        latest|stable)
+        latest)
           version="latest"
-          shift
+          ;;
+        stable)
+          version="head"
+          branch="stable"
           ;;
         head|master)
           version="head"
-          shift
           branch="master"
           ;;
         *)
           fail "--version must be followed by a vaild version number x.y.z"
           ;;
       esac
+      shift
       ;;
 
     +([[:digit:]]).+([[:digit:]]).+([[:digit:]]))
       version="$token"
+      ;;
+
+    stable)
+      version="head"
+      branch="stable"
+      ;;
+
+    head|master)
+      version="head"
+      branch="master"
       ;;
 
     help|usage)
@@ -305,7 +381,7 @@ done
 # means was specified, if any. Defaults to head.
 case "${version}" in
   (head)
-    install_head
+    install_head ${branch:-master} || exit $?
     ;;
 
   (latest)
@@ -325,17 +401,18 @@ esac
 #   installer script.
 flags=()
 if (( rvm_trace_flag == 1 ))
-then
-  flags+=("--trace")
+then flags+=("--trace")
 fi
 
 if (( rvm_debug_flag == 1 ))
-then
-  flags+=("--debug")
+then flags+=("--debug")
+fi
+
+if (( rvm_auto_flag == 1 ))
+then flags+=("--auto")
 fi
 
 chmod +x ./scripts/install
 
 # Now we run the RVM installer.
 ./scripts/install ${flags[*]} --path "$rvm_path"
-

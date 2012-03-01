@@ -9,7 +9,7 @@ __rvm_become
 
 rubygems_remove()
 {
-  local rubygems_path ruby entry
+  typeset rubygems_path ruby entry
 
   rvm_log "Removing old Rubygems files..."
 
@@ -93,7 +93,7 @@ rubygems_setup()
     fi
 
     __rvm_run "rubygems.extract" \
-      "gunzip < ${rvm_archives_path}/$rvm_gem_package_name.tgz | tar xf - -C ${rvm_src_path}" \
+      "gunzip < ${rvm_archives_path}/$rvm_gem_package_name.tgz | $rvm_tar_command xf - -C ${rvm_src_path}" \
       "Extracting $rvm_gem_package_name ..."
   fi
 
@@ -107,6 +107,16 @@ rubygems_setup()
   result=$?
   if (( result == 0 ))
   then
+    typeset program_suffix
+    program_suffix="$(${rvm_ruby_binary} -rrbconfig -e "puts RbConfig::CONFIG['configure_args']")"
+    case "${program_suffix:-}" in
+      (*--program-suffix=*)
+        program_suffix="${program_suffix#*--program-suffix=}"
+        program_suffix="${program_suffix%%[\' ]*}"
+        __rvm_run "link.gem" "ln -s \"$rvm_ruby_home/bin/gem${program_suffix}\" \
+          \"$rvm_ruby_home/bin/gem\"" "$rvm_ruby_string - #linking gem${program_suffix} -> gem "
+        ;;
+    esac
     rvm_log "Installation of rubygems completed successfully."
   else
     rvm_warn "Installation of rubygems did not complete successfully."
@@ -132,7 +142,7 @@ rubygems_setup()
   unset ruby_lib_gem_path
 }
 
-if ! command -v ruby > /dev/null
+if ! builtin command -v ruby > /dev/null
 then
   rvm_error "'ruby' was not found, cannot install rubygems unless ruby is present (Do you have an RVM ruby installed & selected?)"
   exit 1
@@ -143,7 +153,7 @@ fi
 #
 args=($*)
 version="${args[0]}"
-args="$(echo ${args[@]:1}) " # Strip trailing / leading / extra spacing.
+args="$(echo ${args[@]:1})" # Strip trailing / leading / extra spacing.
 
 if [[ -z "$version" ]]
 then

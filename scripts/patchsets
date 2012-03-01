@@ -7,22 +7,21 @@ source "$rvm_scripts_path/patches"
 
 lookup_patchset()
 {
+  typeset paths lookup_path
 
-  local paths lookup_path
-
-  if [[ -z "$1" ]]; then
+  if [[ -z "$1" ]]
+  then
     echo "Usage: rvm patchset show name"
     return 1
   fi
 
   paths=($(__rvm_ruby_string_paths_under "$rvm_path/patchsets"))
 
-  for lookup_path in "${paths[@]}" ; do
-
-    if [[ -s "$lookup_path/$1" ]]; then
-
+  for lookup_path in "${paths[@]}"
+  do
+    if [[ -s "$lookup_path/$1" ]]
+    then
       cat "$lookup_path/$1"
-
       return 0
     fi
   done
@@ -34,7 +33,7 @@ lookup_patchset()
 __rvm_lookup_full_patch_path()
 {
 
-  local directory directories extension patch_path
+  typeset directory directories extension patch_path
 
   directories=($(__rvm_patch_lookup_path))
 
@@ -59,7 +58,7 @@ __rvm_lookup_full_patch_path()
 
 usage()
 {
-  printf "
+  printf "%b" "
 
   Usage:
 
@@ -76,7 +75,7 @@ usage()
 args=($*)
 action="${args[0]}"
 patchset="${args[1]}"
-args="$(echo ${args[@]:2}) " # Strip trailing / leading / extra spacing.
+args="$(echo ${args[@]:2})" # Strip trailing / leading / extra spacing.
 
 case "$action" in
   show|lookup) lookup_patchset "$patchset" ;;

@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+if [[ -z "${rvm_tar_command:-}" ]] && builtin command -v gtar >/dev/null
+then
+  rvm_tar_command=gtar
+else
+  rvm_tar_command=tar
+fi
+
+if [[ ! " ${rvm_tar_options:-} " =~ " --no-same-owner "  ]] && \
+  $rvm_tar_command --help | \grep -- --no-same-owner >/dev/null
+then
+  rvm_tar_options="${rvm_tar_options:-} --no-same-owner"
+  rvm_tar_options="${rvm_tar_options## }"
+fi
+
 #
 # Functions RVM is built on
 #
@@ -12,8 +26,23 @@ match()
   esac
 }
 
+printenv_null()
+{
+  if printenv --null >/dev/null 2>/dev/null
+  then
+    printenv --null
+  else
+    # this messes with escape sequences but allows new lines in variables
+    printenv | sed '/=/ { s/=.*$//; p; }; d;' | while read name
+    do
+      zero="\0"
+      eval "eval \"printf '%b' '$name=\$$name$zero'\""
+    done
+  fi
+}
+
 is_a_function() {
-  type $1 | head -1 | \grep "function" >/dev/null 2>&1
+  typeset -f $1 >/dev/null 2>&1 || return $?
 }
 
 #
@@ -34,7 +63,7 @@ __rvm_warn_on_rubyopt()
 
 __rvm_strings()
 {
-  local strings ruby_strings
+  typeset strings ruby_strings
 
   ruby_strings=($(echo ${rvm_ruby_args:-$rvm_ruby_string}))
 
@@ -51,7 +80,7 @@ __rvm_strings()
 # Derived from rvm_ruby_string.
 __rvm_ruby_string_paths_under()
 {
-  local path part parts
+  typeset path part parts
 
   path="${1%/}" # Strip off any trailing slash
 
@@ -59,12 +88,10 @@ __rvm_ruby_string_paths_under()
 
   echo "$path"
 
-  for part in "${parts[@]}" ; do
-
+  for part in "${parts[@]}"
+  do
     path="$path/$part"
-
     echo "$path"
-
   done
 
   return 0
@@ -72,15 +99,15 @@ __rvm_ruby_string_paths_under()
 
 __rvm_quote_args()
 {
-  local quoted_string=""
+  typeset quoted_string
+  quoted_string=""
 
-  for quoted_argument in "$@"; do
-
-    if printf "%s" "$quoted_argument" | \grep -vq "^[[:alnum:]]$"; then
-
-      quoted_string="$quoted_string '$(printf "%s" "$quoted_argument" \
+  for quoted_argument in "$@"
+  do
+    if printf "%b" "$quoted_argument" | \grep -v "^[[:alnum:]]$" >/dev/null
+    then
+      quoted_string="$quoted_string '$(printf "%b" "$quoted_argument" \
         | \sed "s/'/\'\\\'\'/g")'" #"-fix display quotes
-
     else
       quoted_string="$quoted_string $quoted_argument"
     fi
@@ -93,18 +120,17 @@ __rvm_quote_args()
 
 __rvm_quote_args_with_shift()
 {
-  local shift_value="$1"; shift
+  typeset shift_value
+  shift_value="$1"
+  shift
 
-  while [[ "$shift_value" -gt 0 && $# -gt 0 ]]; do
-
+  while [[ "$shift_value" -gt 0 && $# -gt 0 ]]
+  do
     shift
-
     ((shift_value--))
-
   done
 
   __rvm_quote_args "$@"
-
   return 0
 }
 
@@ -112,11 +138,11 @@ __rvm_quote_args_with_shift()
 # Run a specified command and log it.
 __rvm_run()
 {
-  local name log temp_log_path command message
+  typeset name log temp_log_path _command message
   true ${rvm_debug_flag:=0} ${rvm_niceness:=0}
 
   name="${1:-}"
-  command="${2:-}"
+  _command="${2:-}"
   message="${3:-}"
 
   if [[ -n "$message" ]]
@@ -126,7 +152,7 @@ __rvm_run()
 
   if (( rvm_debug_flag > 0 ))
   then
-    rvm_debug "Executing: $command"
+    rvm_debug "Executing: $_command"
   fi
 
   if [[ -n "${rvm_ruby_string:-}" ]]
@@ -149,19 +175,19 @@ __rvm_run()
   fi
 
   # TODO: Allow an 'append_flag' setting?
-  printf "[$(date +'%Y-%m-%d %H:%M:%S')] $command\n" > "$log"
+  printf "%b" "[$(date +'%Y-%m-%d %H:%M:%S')] $_command\n" > "$log"
 
   if (( rvm_niceness > 0 ))
   then
-    command="nice -n $rvm_niceness $command"
+    _command="nice -n $rvm_niceness $_command"
   fi
 
-  eval "$command" >> "$log" 2>&1
+  eval "$_command" >> "$log" 2>&1
   result=$?
 
   if (( result > 0 ))
   then
-    rvm_error "Error running '$command', please read $log"
+    rvm_error "Error running '$_command', please read $log"
   fi
 
   return ${result}
@@ -170,16 +196,15 @@ __rvm_run()
 # Output the current ruby's rvm source path.
 __rvm_source_dir()
 {
-  if [[ ${rvm_ruby_selected_flag:-0} -eq 0 ]] ; then __rvm_select ; fi
+  if [[ ${rvm_ruby_selected_flag:-0} -eq 0 ]]
+  then __rvm_select
+  fi
 
-  if [[ -z "$rvm_ruby_src_path" ]] ; then
-
+  if [[ -z "$rvm_ruby_src_path" ]]
+  then
     rvm_error "No source directory exists for the default implementation."
-
   else
-
     echo "$rvm_ruby_src_path"
-
   fi
 
   return 0
@@ -188,36 +213,39 @@ __rvm_source_dir()
 # Output an inspection of selected 'binary' scripts, based on CLI selection.
 __rvm_inspect()
 {
-  for binary in $rvm_ruby_args ; do
-
-    actual_file="$(unset -f gem ; command -v gem )"
-
+  for binary in $rvm_ruby_args
+  do
+    actual_file="$(unset -f gem ; builtin command -v gem )"
     rvm_log "$actual_file:"
-
-    if [[ ${rvm_shebang_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_shebang_flag:-0} -eq 1 ]]
+    then
       \head -n 1    < "$actual_file"
     fi
 
-    if [[ ${rvm_env_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_env_flag:-0} -eq 1 ]]
+    then
       \awk '/ENV/'  < "$actual_file"
     fi
 
-    if [[ ${rvm_path_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_path_flag:-0} -eq 1 ]]
+    then
       \awk '/PATH/' < "$actual_file"
     fi
 
-    if [[ ${rvm_head_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_head_flag:-0} -eq 1 ]]
+    then
       \head -n 5    < "$actual_file"
     fi
 
-    if [[ ${rvm_tail_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_tail_flag:-0} -eq 1 ]]
+    then
       \tail -n 5    < "$actual_file"
     fi
 
-    if [[ ${rvm_all_flag:-0} -eq 1 ]] ; then
+    if [[ ${rvm_all_flag:-0} -eq 1 ]]
+    then
       \cat $actual_file
     fi
-
   done
 
   return 0
@@ -262,6 +290,8 @@ __rvm_add_to_path()
     __rvm_remove_from_path "${rvm_user_path_prefix}"
     PATH="${rvm_user_path_prefix}:$PATH"
   fi
+
+  builtin hash -r
 }
 
 __rvm_detect_xcode_version()
@@ -282,5 +312,33 @@ __rvm_detect_xcode_version()
 
 __rvm_detect_xcode_version_is()
 {
-  [[ "$(__rvm_detect_xcode_version)" == "$1" ]]
+  [[ "$(__rvm_detect_xcode_version)" == "$1" ]] || return 1
+}
+
+__rvm_version_compare()
+{
+  typeset v1d v2d dots counter IFS
+  typeset -a transformer
+
+  counter=1
+  IFS="+" # to put + in transformer ;)
+  v1d=$( printf -- $1 | \grep -o '\.' | wc -l )
+  v2d=$( printf -- $3 | \grep -o '\.' | wc -l )
+
+  if [[ $v1d -ge $v2d ]]
+  then dots=$v1d
+  else dots=$v2d
+  fi
+
+  while (( dots >= 0 ))
+  do transformer+=( "$(( 256 ** dots-- ))*\$$((counter++))" )
+  done
+
+  eval "$(
+    printf '[[ ';
+    printf $1 | \awk -F. "{ printf ${transformer[*]} }";
+    printf -- " $2 ";
+    printf $3 | \awk -F. "{ printf ${transformer[*]} }";
+    printf ' ]]'
+  )"
 }

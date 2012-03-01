@@ -14,7 +14,7 @@ get_usage()
 
 get_latest()
 {
-  local version_url stable_version archive current
+  typeset version_url stable_version archive current
 
   version_url="https://rvm.beginrescueend.com/releases/stable-version.txt"
 
@@ -22,8 +22,11 @@ get_latest()
 
   current=${rvm_version}
 
-  rvm_log "\nOriginal installed RVM version:"
-  (__rvm_version)
+  rvm_warn "
+\`rvm get latest\` is deprecated, please use \`rvm get stable\`.
+
+    stable = latest + patches
+"
 
   if [ $stable_version != $current ]
   then
@@ -64,21 +67,21 @@ get_version()
   esac
 
   if [[ "$archive_md5" != "$md5" ]]; then
-    printf "ERROR:
+    printf "%b" "ERROR:
     Archive package rvm-${version}.tar.gz downloaded does not match its md5 checksum ${md5}.
     Aborting RVM Installation.
   "
     exit 1
   fi
 
-  tar zxf "${rvm_path}/archives/rvm-${version}.tar.gz" -C "$rvm_src_path/" --no-same-owner
+  $rvm_tar_command xzf "${rvm_path}/archives/rvm-${version}.tar.gz" -C "$rvm_src_path/" ${rvm_tar_options:-}
 
   (
     cd "$rvm_src_path/rvm-${version}"
 
     chmod +x ./scripts/install
 
-    ./scripts/install
+    ./scripts/install $args
   )
 
   rvm_log "\nInstalled RVM version:"
@@ -91,81 +94,23 @@ get_version()
 
 get_head()
 {
-  rvm_log "\nOriginal installed RVM version:"
-
-  __rvm_version
-
   (
-    if [[ ! -d "${rvm_src_path}" ]] ; then
-      \mkdir -p "${rvm_src_path}"
-    fi
+    export PATH
+    PATH="$PATH:${rvm_bin_path:-$rvm_path/bin}"
+    rvm-installer --branch $1 $args
+  ) || return $?
 
-    builtin cd "${rvm_src_path}"
-
-    if [[ -d "${rvm_src_path}/rvm/.git" ]] ; then
-
-      builtin cd "${rvm_src_path}/rvm/" && \
-        git pull origin master && \
-        ./scripts/install
-
-    else
-
-      builtin cd "${rvm_src_path}" && \
-        ( git clone --depth 1 git://github.com/wayneeseguin/rvm.git || \
-          git clone https://github.com/wayneeseguin/rvm.git ) && \
-        builtin cd rvm/ && ./scripts/install
-    fi
-  )
-
-  rvm_log "\nInstalled RVM HEAD version:"
+  rvm_log "\nInstalled RVM $1 version:"
   ( source $rvm_scripts_path/rvm ; rvm --version )
 
+  typeset -x rvm_hook
   rvm_hook="after_update"
-
   source "$rvm_scripts_path/hook"
 
   return 0
 }
 
-get_branch()
-{
-  rvm_log "\nOriginal installed RVM version:"
-
-  __rvm_version
-
-  (
-    if [[ ! -d "${rvm_src_path}" ]] ; then
-      \mkdir -p "${rvm_src_path}"
-    fi
-
-    builtin cd "${rvm_src_path}"
-
-    if [[ -d "${rvm_src_path}/rvm/.git" ]] ; then
-
-      builtin cd "${rvm_src_path}/rvm/" && \
-        git pull origin master && \
-        ./scripts/install
-
-    else
-
-      builtin cd "${rvm_src_path}" && \
-        ( git clone --depth 1 git://github.com/wayneeseguin/rvm.git || \
-          git clone https://github.com/wayneeseguin/rvm.git ) && \
-        builtin cd rvm/ && ./scripts/install
-    fi
-  )
-
-  rvm_log "\nInstalled RVM HEAD version:"
-  ( source $rvm_scripts_path/rvm ; rvm --version )
-
-  rvm_hook="after_update"
-
-  source "$rvm_scripts_path/hook"
-
-  return 0
-
-}
-
+export args
 args=($*)
 action="${args[$__array_start]}"
 args[$__array_start]=""
@@ -177,16 +122,36 @@ case "$action" in
     ;;
 
   (head|master)
-    get_head
+    get_head master
+    ;;
+
+  (stable)
+    get_head stable
+    ;;
+
+  (branch)
+    args[$__array_start]=""
+    args=(${args[@]})
+    get_head $2
     ;;
 
   ([0-9]*.[0-9]*.[0-9]*)
     get_version "$action"
     ;;
 
-  (help|*)
+  # hack ... we will make it working properly in rvm2
+  (--auto)
+    exec $0 ${args[@]} --auto
+    ;;
+
+  (help)
     get_usage
     true
+    ;;
+
+  (*)
+    get_usage
+    false
     ;;
 esac
 
