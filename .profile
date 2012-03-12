@@ -11,3 +11,17 @@ elif [[ -f /etc/profile.d/rvm.sh ]]; then
 else
   source $HOME/.rvm/scripts/rvm
 fi
+
+unset gem
+
+function irb {
+  if pushd ./$(\git rev-parse --show-cdup) > /dev/null; then
+    if [[ $(pwd) = $HOME ]]; then
+      bundle exec irb --readline
+    else
+      bundle exec irb --readline -f
+    fi
+    popd > /dev/null
+  fi
+}
+
