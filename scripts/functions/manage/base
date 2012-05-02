@@ -57,7 +57,7 @@ __rvm_apply_patches()
       # If set, extract the patch level from the patch name.
       patch_level=1
 
-      if echo "$patch_name" | \grep "$patch_level_separator" >/dev/null 2>&1; then
+      if echo "$patch_name" | GREP_OPTIONS="" \grep "$patch_level_separator" >/dev/null 2>&1; then
         patch_level=${patch_name//*${patch_level_separator}/}
         patch_name="${patch_name//${patch_level_separator}*/}"
       fi
@@ -268,7 +268,7 @@ __rvm_install_source()
   export GEM_PATH="$rvm_ruby_gem_path"
 
   (
-    __rvm_use
+    rvm_create_flag=1 __rvm_use
     "$rvm_scripts_path/rubygems" ${rvm_rubygems_version:-latest}
   )
   result=$?
@@ -303,10 +303,10 @@ __rvm_install_ruby()
         rvm_error "
 The used ruby name (-n) is not valid, it was matched as:
 
-$( env | grep "^rvm.*=$__rvm_ruby_name$" || printf "# Was not used at all\n")
+$( env | GREP_OPTIONS="" \grep "^rvm.*=$__rvm_ruby_name$" || printf "# Was not used at all\n")
 
 for more details on selecting names please visit:
-https://rvm.beginrescueend.com/rubies/named/
+https://rvm.io/rubies/named/
 " #" fix escaping
         return 1
       fi
@@ -584,7 +584,7 @@ __rvm_fetch_ruby()
 
     true ${rvm_ruby_url:="$rvm_ruby_repo_url"}
 
-    if echo "$rvm_ruby_url" | grep 'git' >/dev/null 2>&1
+    if echo "$rvm_ruby_url" | GREP_OPTIONS="" \grep 'git' >/dev/null 2>&1
     then # Using a  git url.
       case "$rvm_ruby_interpreter" in
         ruby)
@@ -1233,4 +1233,24 @@ __rvm_record_ruby_configs()
       fi
     fi
   done
+}
+
+__rvm_compatibility_flag_configuration()
+{
+  typeset flag
+  flag="$1"
+
+  if ! shift
+  then
+    rvm_error "__rvm_compability_flag_configuration requires one param."
+    return 1
+  fi
+
+  if [[ ${rvm_19_flag:-0} == 1 ]]
+  then
+    rvm_configure_flags="${rvm_configure_flags:-} ${flag}1.9"
+  elif [[ ${rvm_18_flag:-0} == 1 ]]
+  then
+    rvm_configure_flags="${rvm_configure_flags:-} ${flag}1.8"
+  fi
 }

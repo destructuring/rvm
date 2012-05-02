@@ -7,11 +7,14 @@ rvm_docs_ruby_string="$(__rvm_env_string | awk -F"${rvm_gemset_separator:-"@"}" 
 
 if [[ "$rvm_docs_ruby_string" == "system" || -z "$rvm_docs_ruby_string" ]]
 then
-
   rvm_error "Currently 'rvm docs ...' does not work with non-rvm rubies."
-
   exit 1
+fi
 
+if [[ ! -d "${rvm_src_path}/$rvm_docs_ruby_string" ]]
+then
+  rvm_error "'rvm docs ...' requires ruby sources to be available, run \`rvm reinstall $rvm_docs_ruby_string"
+  exit 2
 fi
 
 rvm_docs_type="${rvm_docs_type:-rdoc}"
@@ -94,7 +97,7 @@ generate_rdoc()
 
     rvm_log "( Errors will be logged to ${rvm_log_path}/$rvm_docs_ruby_string/docs.log )"
 
-    if gem list | \grep ^hanna >/dev/null 2>&1
+    if gem list | GREP_OPTIONS="" \grep ^hanna >/dev/null 2>&1
     then
 
       hanna -o "${rvm_docs_path:-"$rvm_path/docs"}/$rvm_docs_ruby_string/$rvm_docs_type" --inline-source --line-numbers --fmt=html > /dev/null 2>> "${rvm_log_path}/$rvm_docs_ruby_string/docs.log"
