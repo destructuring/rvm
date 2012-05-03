@@ -25,3 +25,6 @@ function irb {
   fi
 }
 
+
+export RBENV_ROOT=$HOME/.rvm/rbenv
+PATH=$RBENV_ROOT/shims:$RBENV_ROOT/bin:$PATH

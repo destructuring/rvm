@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -e
+export RBENV_ROOT="$HOME/.rvm/rbenv"
+exec rbenv exec "${0##*/}" "$@"
