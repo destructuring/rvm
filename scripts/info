@@ -154,7 +154,7 @@ $(__rvm_version)
 
   for file_name in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshenv" ; do
     if [[ -s "$file_name" ]] ; then
-      rvm_info="$rvm_info\n$file_name:\n$(GREP_OPTIONS="" \grep 'rvm' "$file_name" 2>/dev/null || true)"
+      rvm_info="$rvm_info\n$file_name:\n$(\grep 'rvm' "$file_name" 2>/dev/null || true)"
     fi
   done
 
@@ -217,7 +217,15 @@ if [[ -z "${sections// /}" ]] ; then
   sections="$all_sections"
 fi
 
-rvm_is_a_shell_function || true
+if [[ "${rvm_is_not_a_shell_function:-0}" == "1" ]]
+then
+  if rvm_pretty_print stderr
+  then
+    printf "%b" "\n${rvm_notify_clr:-}RVM is not a function, selecting rubies with '${rvm_error_clr:-}rvm use ...${rvm_notify_clr:-}' will not work.${rvm_reset_clr:-}\n" >&2
+  else
+    printf "%b" "\nRVM is not a function, selecting rubies with 'rvm use ...' will not work.\n" >&2
+  fi
+fi
 
 if [[ -z "$ruby_strings" ]] ; then
 

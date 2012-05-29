@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 
 # rvm : Ruby enVironment Manager
-# https://rvm.io
+# https://rvm.beginrescueend.com
 # https://github.com/wayneeseguin/rvm
-
-# Do not allow sourcing RVM in `sh` - it's not supported
-# return 0 to exit from sourcing this script without breaking sh
-[[ ":$SHELLOPTS:" =~ ":posix:" ]] && return 0 || true
 
 # TODO: Alter the variable names to make sense
 \export HOME rvm_prefix rvm_user_install_flag rvm_path
@@ -19,7 +15,7 @@ then
   do
     if [[ -f "$rvmrc" ]]
     then
-      if GREP_OPTIONS="" \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
+      if \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
       then
         printf "%b" "
 Error:
@@ -50,7 +46,7 @@ then
       rvm_path="${rvm_prefix}/.rvm"
     fi
   else
-    if [[ -d "$HOME/.rvm" && -s "$HOME/.rvm/scripts/rvm" ]]
+    if [[ -d "$HOME/.rvm" ]]
     then
       rvm_user_install_flag=1
       rvm_prefix="$HOME"
@@ -110,14 +106,15 @@ then
     __rvm_ensure_is_a_function
     __rvm_setup
 
-    export rvm_version
-    rvm_version="$(cat "$rvm_path/VERSION") ($(cat "$rvm_path/RELEASE" 2>/dev/null))"
+    rvm_version="$(cat "$rvm_path/VERSION")"
 
-    alias rvm-restart="rvm_reload_flag=1 source '${rvm_scripts_path:-${rvm_path}/scripts}/rvm'"
+    export rvm_version="${rvm_version/%.}"
+
+    alias rvm-restart="rvm_reload_flag=1 source '${rvm_path}/scripts/rvm'"
 
     if ! builtin command -v ruby >/dev/null 2>&1 ||
-      builtin command -v ruby | GREP_OPTIONS="" \grep -v "${rvm_path}" >/dev/null ||
-      builtin command -v ruby | GREP_OPTIONS="" \grep "${rvm_path}/bin/ruby$" >/dev/null
+      builtin command -v ruby | \grep -v "${rvm_path}" >/dev/null ||
+      builtin command -v ruby | \grep "${rvm_path}/bin/ruby$" >/dev/null
     then
       if [[ -s "$rvm_environments_path/default" ]]
       then
@@ -133,10 +130,9 @@ then
 
     if (( ${rvm_reload_flag:=0} == 1 ))
     then
-      [[ "${rvm_auto_reload_flag:-0}" == 2 ]] || printf "%b" 'RVM reloaded!\n'
+      printf "%b" 'RVM reloaded!\n'
       # make sure we clean env on reload
       __rvm_env_loaded=1
-      unset __rvm_project_rvmrc_lock
     fi
 
     rvm_loaded_flag=1
@@ -144,22 +140,19 @@ then
     printf "%b" "\n\$rvm_path ($rvm_path) does not exist."
   fi
   unset rvm_prefix_needs_trailing_slash rvm_gems_cache_path \
-    rvm_gems_path rvm_project_rvmrc_default rvm_gemset_separator rvm_reload_flag
+    rvm_gems_path rvm_project_rvmrc_default rvm_gemset_separator
 else
   source "${rvm_scripts_path:="$rvm_path/scripts"}/initialize"
   __rvm_setup
 fi
 
 if [[ -t 0 && ${rvm_project_rvmrc:-1} -gt 0 ]] &&
-  rvm_is_a_shell_function no_warning &&
-  ! __function_on_stack __rvm_project_rvmrc &&
+  [[ ! " ${FUNCNAME[@]} " =~ " __rvm_project_rvmrc " ]] &&
   typeset -f __rvm_project_rvmrc >/dev/null 2>&1
 then
   # Reload the rvmrc, use promptless ensuring shell processes does not
   # prompt if .rvmrc trust value is not stored.
   rvm_promptless=1 __rvm_project_rvmrc
-  rvm_hook=after_cd
-  source "${rvm_scripts_path:-${rvm_path}/scripts}/hook"
 fi
 
 __rvm_teardown

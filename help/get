@@ -1,19 +1,18 @@
 
 Usage:
 
-  rvm get {stable|latest|latest-x.y|x.y.z|head|master|branch|help} [--auto]
+  rvm get {stable|latest|x.y.z|head|master|branch|help} [--auto]
 
 Options:
 
-  stable      - install the latest RVM stable release
+  stable      - git clone and install the latest RVM repository stable branch.
 
-  latest      - install the latest RVM release
+  latest      - download and install the latest RVM release listed by
+                https://rvm.beginrescueend.com/releases/stable-version.txt
 
-  latest-x.y  - install the latest RVM release matching the x.y* pattern
+  x.y.z       - download and install a specific RVM release
 
-  x.y.z       - install a specific RVM release
-
-  head        - install the latest RVM development version
+  head        - git clone and install the latest RVM repository master/HEAD.
   master
 
   --auto      - automatically update shell profile files.

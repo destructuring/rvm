@@ -69,7 +69,7 @@ install_package()
     then
       if [[ -z "${rvm_autoconf_flags:-}" ]]
       then
-        if uname -s | GREP_OPTIONS="" \grep -iE 'cygwin|mingw' >/dev/null
+        if uname -s | grep -iE 'cygwin|mingw' >/dev/null
         then # no symlinks on windows :(
           rvm_autoconf_flags="-ivf"
         else
@@ -140,7 +140,7 @@ curl()
 
 openssl()
 {
-  package="openssl" ; version="0.9.8t" ; archive_format="tar.gz"
+  package="openssl" ; version="0.9.8n" ; archive_format="tar.gz"
   if [[ "Darwin" == "$(uname)" ]] ; then
 
     if [[ -n "$rvm_architectures" ]]; then
@@ -251,7 +251,7 @@ libyaml_installed()
 {
   typeset path
   path="${prefix_path:-${rvm_usr_path:-${rvm_path}/usr}}"
-  [[ -f "${path}/include/yaml.h" ]] && \find "${path}" -name libyaml.so | GREP_OPTIONS="" \grep '.*' >/dev/null
+  [[ -f "${path}/include/yaml.h" ]] && \find "${path}" -name libyaml.so | \grep '.*' >/dev/null
 }
 
 glib()

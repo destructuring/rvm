@@ -6,10 +6,12 @@ source "$rvm_scripts_path/base"
 
 result=0
 
-# handled by teardown
-__rvm_cleanup_download()
+# Set it to cleanup the download on interruption.
+trap 'cleanup_download' 1 2 3 15
+
+cleanup_download()
 {
-  [[ -f "$archive" ]] && __rvm_rm_rf "$archive"
+  [[ -f "$archive" ]] && rm -f "$archive"
 }
 
 record_md5()

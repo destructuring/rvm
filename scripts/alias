@@ -28,7 +28,6 @@ alias_conflicts_with_ruby() {
   alias_check_result="$(
     \. "$rvm_scripts_path/initialize"
     \. "$rvm_scripts_path/selector"
-    \. "$rvm_scripts_path/selector_gemsets"
     export rvm_ruby_string=\"$1\"
     __rvm_ruby_string > /dev/null 2>&1
     echo "$?"
@@ -252,7 +251,7 @@ result=0
 
 if [[ ! -f "$rvm_path/config/alias" ]] ; then touch "$rvm_path/config/alias" ; fi
 
-if printf "%b" "$alias_name" | GREP_OPTIONS="" \grep "${rvm_gemset_separator:-"@"}" >/dev/null 2>&1 ; then
+if printf "%b" "$alias_name" | grep "${rvm_gemset_separator:-"@"}" >/dev/null 2>&1 ; then
   gemset_name="${alias_name/*${rvm_gemset_separator:-"@"}/}"
   alias_name="${alias_name/${rvm_gemset_separator:-"@"}*/}"
 else

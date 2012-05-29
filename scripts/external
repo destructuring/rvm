@@ -27,7 +27,7 @@ external_grep_existing()
   : existing:${existing[@]}:
   if (( ${#existing[@]} > 0 ))
   then
-    GREP_OPTIONS="" \grep -vE "${existing[@]}" -
+    grep -vE "${existing[@]}" -
   else
     cat -
   fi
@@ -67,11 +67,11 @@ external_mount()
 {
   typeset path ruby_path prefix_path
   path="$1"
-  if [[ ! -d "${path}" && -x "${path}" ]] && "${path}" --version | GREP_OPTIONS="" \grep rub >/dev/null
+  if [[ ! -d "${path}" && -x "${path}" ]] && "${path}" --version | grep ruby >/dev/null
   then
     ruby_path="${path}"
     prefix_path="$("${path}" -rrbconfig -e "puts RbConfig::CONFIG['prefix']")"
-  elif [[ -d "${path}" && -x "${path}/bin/ruby" ]] && "${path}/bin/ruby" --version | GREP_OPTIONS="" \grep rub >/dev/null
+  elif [[ -d "${path}" && -x "${path}/bin/ruby" ]] && "${path}/bin/ruby" --version | grep ruby >/dev/null
   then
     ruby_path="${path}/bin/ruby"
     prefix_path="$("${ruby_path}" -rrbconfig -e "puts RbConfig::CONFIG['prefix']")"
@@ -84,7 +84,7 @@ external_mount()
     rvm_error "The given path '$path' does not point to a ruby installation."
     exit 3
   fi
-
+  
   if [[ -z "${rvm_ruby_name:-}" ]]
   then
     if ! external_select_name "${ruby_path}" "${prefix_path}" ||

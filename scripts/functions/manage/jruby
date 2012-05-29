@@ -2,8 +2,6 @@
 
 jruby_install()
 {
-  __rvm_compatibility_flag_configuration -Djruby.default.ruby.version=
-
   if ! builtin command -v java > /dev/null
   then
     printf "%b" "java must be installed and in PATH for JRuby."
@@ -96,9 +94,9 @@ jruby_install()
 
   __rvm_irbrc
 
-  rvm_create_flag=1 __rvm_use
-
   __rvm_bin_script
+
+  __rvm_use
 
   __rvm_post_install
 

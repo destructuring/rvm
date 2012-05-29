@@ -86,7 +86,7 @@ snapshot_save()
 
   rvm_log "Backing up all of your installed rubies"
 
-  printf "%b" "#!/usr/bin/env bash\n\nset -e\n\n" > "$snapshot_temp_path/install-rubies.sh"
+  echo '#!/usr/bin/env bash -e' > "$snapshot_temp_path/install-rubies.sh"
 
   echo "source \"\$rvm_scripts_path/rvm\" || true" >> "$snapshot_temp_path/install-rubies.sh"
 
@@ -103,8 +103,8 @@ snapshot_save()
   __rvm_rm_rf "$snapshot_ruby_name_file"
   __rvm_rm_rf "$snapshot_alias_name_file"
 
-  snapshot_primary_ruby="$(GREP_OPTIONS="" \grep '^\(ree\|ruby-1.8.7\)' < "$snapshot_installable_file" | \grep -v '-head$' | sort -r | head -n1)"
-  snapshot_ruby_order="$snapshot_primary_ruby $(GREP_OPTIONS="" \grep -v "$snapshot_primary_ruby" < "$snapshot_installable_file")"
+  snapshot_primary_ruby="$(\grep '^\(ree\|ruby-1.8.7\)' < "$snapshot_installable_file" | \grep -v '-head$' | sort -r | head -n1)"
+  snapshot_ruby_order="$snapshot_primary_ruby $(\grep -v "$snapshot_primary_ruby" < "$snapshot_installable_file")"
 
   for snapshot_ruby_name in $snapshot_ruby_order
   do
@@ -188,7 +188,6 @@ snapshot_load()
   rvm_log "Installing rubies"
 
   chmod +x "$snapshot_temp_path/install-rubies.sh"
-  sed -i'' '1 s/#!\/usr\/bin\/env bash -e/#!\/usr\/bin\/env bash\n\nset -e/' "$snapshot_temp_path/install-rubies.sh"
 
   "$snapshot_temp_path/install-rubies.sh"
   result="$?"
