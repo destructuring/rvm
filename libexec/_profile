@@ -1,5 +1,5 @@
 # figure out the project root under which bin, lib live
-rhome="$(cd -P -- "$(dirname -- "$BASH_SOURCE")/.." && pwd -P)"
+rhome="$(cd -P -- "$(dirname -- "$BASH_SOURCE")/../.." && pwd -P)"
 
 for a in $(set | grep ^rvm_ | grep = | cut -d= -f1); do
   unset $a
