@@ -3,11 +3,17 @@
 if (( ${rvm_ignore_rvmrc:=0} == 0 ))
 then
   declare rvmrc
-  for rvmrc in /etc/rvmrc "$HOME/.rvmrc"
+
+  rvm_rvmrc_files=("/etc/rvmrc" "$HOME/.rvmrc")
+  if [[ -n "${rvm_prefix:-}" ]] && ! [[ "$HOME/.rvmrc" -ef "${rvm_prefix}/.rvmrc" ]]
+     then rvm_rvmrc_files+=( "${rvm_prefix}/.rvmrc" )
+  fi
+
+  for rvmrc in "${rvm_rvmrc_files[@]}"
   do
     if [[ -f "$rvmrc" ]]
     then
-      if grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
+      if GREP_OPTIONS="" \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
       then
         printf "%b" "
   Error:
@@ -21,20 +27,9 @@ then
       fi
     fi
   done
+  unset rvm_rvmrc_files
   unset rvmrc
 fi
-
-export rvm_tar
-export rvm_uname
-rvm_uname=$(uname)
-case "$rvm_uname" in
-    OpenBSD)
-        rvm_tar=gtar
-        ;;
-    *)
-        rvm_tar=tar
-        ;;
-esac
 
 export rvm_path
 if [[ -z "${rvm_path:-}" ]]

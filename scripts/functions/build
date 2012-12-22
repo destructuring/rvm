@@ -3,80 +3,216 @@
 # show the user selected compiler or return 1
 __rvm_selected_compiler()
 {
-  if [[ " ${rvm_configure_flags:-}" =~ " --with-gcc=" ]]
+  #TODO: add handling for rvm_configure_env
+  if
+    [[ " ${rvm_configure_flags[*]}" =~ " --with-gcc=" ]]
   then
     typeset __compiler
-    __compiler="${rvm_configure_flags}"
-    __compiler="${__compiler#*--with-gcc=}"
-    __compiler="${__compiler% *}"
-    echo "${__compiler}"
-  elif [[ -n "${CC:-}" ]]
+    for __compiler in "${rvm_configure_flags[@]}"
+    do
+      case "$__compiler" in
+        (--with-gcc=*)
+          echo "${__compiler#--with-gcc=}"
+          return 0
+          ;;
+      esac
+    done
+  elif
+    [[ -n "${CC:-}" ]]
   then
     echo "${CC}"
+    return 0
+  fi
+  return 1
+}
+
+__rvm_found_compiler()
+{
+  __rvm_selected_compiler || \which gcc 2>/dev/null
+}
+
+__rvm_run_compiler()
+{
+  typeset compiler
+  if
+    compiler="$( __rvm_found_compiler )"
+  then
+    if [[ -n "${ZSH_VERSION:-}" ]]
+    then ${=compiler} "$@" || return $?
+    else ${compiler}  "$@" || return $?
+    fi
   else
     return 1
   fi
 }
 
-__rvm_found_compiler()
-{
-  __rvm_selected_compiler || which gcc 2>/dev/null
-}
-
 __rvm_compiler_is_llvm()
 {
-  $(__rvm_found_compiler) --version | grep -i llvm >/dev/null
+  __rvm_found_compiler >/dev/null &&
+  [[ "$(__rvm_run_compiler --version)" =~ "llvm" ]] ||
+  return $?
+}
+
+__rvm_compiler_is_gcc47()
+{
+  __rvm_found_compiler >/dev/null &&
+  [[ "$(__rvm_run_compiler -dumpversion)" =~ "4.7" ]] ||
+  return $?
 }
 
 __rvm_setup_compile_environment()
+{
+  __rvm_setup_compile_environment_osx_gcc           "$1"
+  __rvm_setup_compile_environment_osx_architectures "$1"
+  __rvm_setup_compile_environment_gcc47             "$1"
+  __rvm_setup_compile_environment_smartos           "$1"
+  rvm_debug "found compiler: $( __rvm_found_compiler )"
+}
+
+__rvm_update_configure_env()
+{
+  typeset -a local_configure_env
+  typeset _variable _value _iterator _found
+  rvm_debug "__rvm_update_configure_env($#):$*:"
+  while (( $# ))
+  do
+    _variable="${1%%\=*}"
+    _value="${1#*=}"
+    shift
+    __rvm_array_add_or_update rvm_configure_env "$_variable=" " " "$_value"
+  done
+}
+
+__rvm_update_configure_opt_dir()
+{
+  #TODO add support for --with-opt-dir=...:... for > ruby-1.9.3-p286
+  case "$1" in
+    (ruby-head*|ruby-2*)
+      __rvm_update_configure_opt_dir_option "$2"
+      ;;
+    (ruby-1.9.3-p*)
+      typeset __patchlevel
+      __patchlevel="${1##ruby-1.9.3-p}"
+      if
+        (( __patchlevel < 297 ))
+      then
+        rvm_patch_names+=( cflags )
+        __rvm_update_configure_opt_dir_flags "$2"
+      else
+        __rvm_update_configure_opt_dir_option "$2"
+      fi
+      ;;
+    (*)
+      __rvm_update_configure_opt_dir_flags "$2"
+      ;;
+  esac
+}
+
+__rvm_update_configure_opt_dir_option()
+{
+  rvm_debug "rvm_configure_flags+=( --with-opt-dir=$1 )"
+  __rvm_array_add_or_update rvm_configure_flags --with-opt-dir= : "$1"
+}
+
+__rvm_update_configure_opt_dir_flags()
+{
+  typeset __enable_rpath __lib_path
+  if
+    which bash | xargs head -n 1 | cat -e | grep -b '^^?ELF' >/dev/null
+  then
+    __enable_rpath="true"
+  fi
+  __rvm_update_configure_env CFLAGS="-I$1/include"
+  __rvm_update_configure_env LDFLAGS="-L$1/lib"
+  [[ -z "${__enable_rpath:-}" ]] ||
+    __rvm_update_configure_env LDFLAGS="-Wl,-rpath,$1/lib"
+  if [[ -d "$1/lib64" ]]
+  then
+    __rvm_update_configure_env LDFLAGS="-L$1/lib64"
+    [[ -z "${__enable_rpath:-}" ]] ||
+      __rvm_update_configure_env LDFLAGS="-Wl,-rpath,$1/lib64"
+  fi
+}
+
+__rvm_setup_compile_environment_osx_gcc()
 {
   if [[ "Darwin" == "$(uname)" ]] && ! __rvm_selected_compiler > /dev/null
   then
     export CC
     # override CC if gcc-4.2 available (OSX)
-    if [[ -x /usr/bin/gcc-4.2 ]]
+    if
+      [[ -x /usr/local/bin/gcc-4.2 ]] # HomeBrew
     then
-      CC=/usr/bin/gcc-4.2
-    elif which gcc-4.2 > /dev/null
+      CC=/usr/local/bin/gcc-4.2
+    elif
+      [[ -x /opt/local/bin/gcc-apple-4.2 ]] # MacPorts
+    then
+      CC=/opt/local/bin/gcc-apple-4.2
+    elif
+      __rvm_which gcc-apple-4.2 > /dev/null # MacPorts via PATH
+    then
+      CC=gcc-apple-4.2
+    elif
+      __rvm_which gcc-4.2 > /dev/null # Any gcc-4.2
     then
       CC=gcc-4.2
+    elif
+      [[ -x /usr/bin/gcc-4.2 ]] # OSX-GCC-Installer / Xcode - might be LLVM
+    then
+      CC=/usr/bin/gcc-4.2
     fi
   fi
 
-  if [[ "${rvm_patch_names:-}" =~ *debug* ]]
+  if __rvm_array_contains "*debug*" "${rvm_patch_names[@]}"
   then rvm_force_autoconf_flag=1
   fi
+}
 
+__rvm_setup_compile_environment_osx_architectures()
+{
   [[ -n "${rvm_architectures:-}" ]] || return 0
 
-  if [[ "${rvm_ruby_version}" =~ 1.9.* ]]
+  # Ruby 1.9.x supports the easy way
+  if
+    __rvm_string_match "$1" "ruby-1.9.*"
   then
-    # Ruby 1.9.x supports the easy way
-    rvm_configure_flags="${rvm_configure_flags:-} --with-arch=${rvm_architectures}"
+    rvm_configure_flags+=( --with-arch="${rvm_architectures}" )
   else
-    export -a rvm_configure_env
     typeset architectures architecture
+    typeset -a _local_osx_env
 
     for architecture in ${rvm_architectures//,/ }
     do architectures="${architectures} -arch ${architecture}"
     done
 
-    rvm_configure_env+=(
-      "MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion | awk -F'.' '{print $1"."$2}')"
+    _local_osx_env=(
+      MACOSX_DEPLOYMENT_TARGET="$( sw_vers -productVersion | awk -F'.' '{print $1"."$2}' )"
+      CFLAGS="${architectures} -g -Os -pipe -no-cpp-precomp"
+      CCFLAGS="${architectures} -g -Os -pipe"
+      CXXFLAGS="${architectures} -g -Os -pipe"
+      LDFLAGS="${architectures} -bind_at_load"
+      LDSHARED="cc ${architectures} -dynamiclib -undefined suppress -flat_namespace"
     )
-    rvm_configure_env+=("CFLAGS='${architectures} -g -Os -pipe -no-cpp-precomp'")
-    rvm_configure_env+=("CCFLAGS='${architectures} -g -Os -pipe'")
-    rvm_configure_env+=("CXXFLAGS='${architectures} -g -Os -pipe'")
-    rvm_configure_env+=("LDFLAGS='${architectures} -bind_at_load'")
-    rvm_configure_env+=(
-      "LDSHARED='cc ${architectures} -dynamiclib -undefined suppress -flat_namespace'"
-    )
-    rvm_configure_env="${rvm_configure_env[*]}"
-
-    if ! [[ "${rvm_patch_names:-}" =~ *osx-arch-fix* ]]
-    then rvm_patch_names="osx-arch-fix ${rvm_patch_names:-}"
-    fi
+    __rvm_update_configure_env "${_local_osx_env[@]}"
+    __rvm_array_contains "*osx-arch-fix*" "${rvm_patch_names[@]}" || rvm_patch_names+=( osx-arch-fix )
   fi
+}
+
+__rvm_setup_compile_environment_gcc47()
+{
+  __rvm_compiler_is_gcc47 || return 0
+  __rvm_string_match "$1" "ruby-1.8.*" || return 0
+
+  # -g -O2 from 1.8.7-p370 is not enough, need all the flags to fix it
+  __rvm_update_configure_env CFLAGS="-O2 -fno-tree-dce -fno-optimize-sibling-calls"
+}
+
+__rvm_setup_compile_environment_smartos()
+{
+  [[ "$(uname -v)" =~ ^joyent ]] || return 0
+  __rvm_update_configure_opt_dir "$1" "/opt/local" # TODO do we needed the next line?
+  __rvm_update_configure_env CCFLAGS="-I/opt/local/include"
+  __rvm_add_to_path prepend "/opt/local/gnu/bin"
 }
 
 __rvm_check_for_compiler()
@@ -129,7 +265,7 @@ __rvm_mri_rubies()
   for _ruby in $( find $rvm_rubies_path/ -maxdepth 1 -mindepth 1 -type d -not -type l )
   do
     printf "%b" "${_ruby##*/}\n"
-  done | grep -E "$versions"
+  done | GREP_OPTIONS="" \grep -E "$versions"
 }
 
 # Returns the first mri compatible (partly) ruby for use

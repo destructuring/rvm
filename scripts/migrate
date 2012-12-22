@@ -28,7 +28,7 @@ confirm()
   read -r confirmation_response
 
   [[ -z "$confirmation_response" ]] ||
-    echo "$confirmation_response" | \grep -i '^y' >/dev/null 2>&1
+    echo "$confirmation_response" | GREP_OPTIONS="" \grep -i '^y' >/dev/null 2>&1
 }
 
 die_with_error()
@@ -106,7 +106,7 @@ migrate_rubies()
 
     __rvm_run_with_env "gemset.pristine" "$destination_gemset" "rvm gemset pristine" "Making gemset $destination_gemset pristine."
 
-  done < <("$rvm_scripts_path/list" gemsets strings | \grep "^$expanded_source")
+  done < <("$rvm_scripts_path/list" gemsets strings | GREP_OPTIONS="" \grep "^$expanded_source")
 
 
   if confirm 'Do you wish to move over aliases?'
@@ -129,7 +129,7 @@ migrate_rubies()
   if confirm "Do you wish to move over wrappers?"
   then
     origin_wrappers_path="$rvm_wrappers_path/$expanded_source"
-    binaries=($(cd "${rvm_bin_path}" ; find . -maxdepth 1 -mindepth 1 -type f))
+    binaries=($(chpwd_functions="" builtin cd "${rvm_bin_path}" ; find . -maxdepth 1 -mindepth 1 -type f))
 
     for binary_name in "${binaries[@]//.\/}"
     do
@@ -149,7 +149,7 @@ migrate_rubies()
 
   if confirm "Do you also wish to completely remove $expanded_source (inc. archive)?"
   then
-    __rvm_run_with_env "rvm.remove" "$expanded_source" "rvm remove $expanded_source --archive --gems"
+    __rvm_log_command "rvm.remove" "Removing $expanded_source" rvm remove "$expanded_source" --archive --gems
   fi
 
   echo "Successfully migrated $expanded_source to $expanded_destination"

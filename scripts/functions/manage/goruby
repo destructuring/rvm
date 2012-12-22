@@ -21,7 +21,7 @@ goruby_install()
     exit $result
   fi
 
-  #builtin cd "${rvm_src_path}/$rvm_ruby_string/configure"
+  #chpwd_functions="" builtin cd "${rvm_src_path}/$rvm_ruby_string/configure"
 
   if [[ ! -s "${rvm_src_path}/$rvm_ruby_string/configure" ]]
   then
@@ -54,11 +54,8 @@ goruby_install()
 
   elif [[ -s ./configure ]]
   then
-    typeset configure_command
-    configure_command="${rvm_configure_env:-""} ./configure --prefix=$rvm_ruby_home $rvm_configure_flags"
-
-    __rvm_run "configure" "$configure_command" \
-      "Configuring $rvm_ruby_string using $rvm_configure_flags, this may take a while depending on your cpu(s)..."
+    __rvm_log_command "configure" "$rvm_ruby_string - #configuring" \
+      "${rvm_configure_env[@]}" ./configure --prefix="$rvm_ruby_home" "${rvm_configure_flags[@]}"
     result=$?
 
     if (( result > 0 ))
@@ -71,10 +68,10 @@ goruby_install()
     rvm_error "Skipping configure step, 'configure' script does not exist, did autoreconf not run successfully?"
   fi
 
-  rvm_ruby_make=${rvm_ruby_make:-"make"}
+  : rvm_ruby_make:${rvm_ruby_make:=make}
 
-  __rvm_run "make" "$rvm_ruby_make golf $rvm_make_flags" \
-    "Compiling $rvm_ruby_string, this may take a while depending on your cpu(s)..."
+  __rvm_log_command "make" "Compiling $rvm_ruby_string, this may take a while depending on your cpu(s)..." \
+    $rvm_ruby_make golf "${rvm_make_flags[@]}"
   result=$?
 
   if (( result > 0 ))
@@ -99,7 +96,10 @@ goruby_install()
   export GEM_HOME="$rvm_ruby_gem_home"
   export GEM_PATH="$rvm_ruby_gem_path"
 
-  "$rvm_scripts_path/rubygems" latest
+  (
+    rvm_create_flag=1 __rvm_use
+    "$rvm_scripts_path/rubygems" ${rvm_rubygems_version:-latest}
+  )
 
   __rvm_bin_script
 

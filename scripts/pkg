@@ -13,8 +13,6 @@ source "$rvm_scripts_path/functions/build"
 source "$rvm_scripts_path/functions/db"
 source "$rvm_scripts_path/functions/pkg"
 
-__rvm_setup_compile_environment
-
 set +o errexit
 
 # Tools to make managing ruby dependencies inside of rvm easier.
@@ -23,28 +21,40 @@ action="${args[0]:-""}"
 library="${args[1]:-""}"
 args="$(echo ${args[@]:2})"
 
+
 if [[ -n "$library" ]]
 then
   case $library in
     readline|iconv|curl|openssl|zlib|autoconf|ncurses|pkgconfig|gettext|glib|mono|llvm|libxml2|libxslt|libyaml)
+      __rvm_setup_compile_environment ${library}
       ${library}
-    ;;
+      ;;
     ree_dependencies)
-      for i in zlib ncurses readline openssl iconv; do
-        ${i}
-        reset
+      for i in zlib ncurses readline openssl iconv
+      do
+        (
+          __rvm_setup_compile_environment ${i}
+          ${i}
+        )
       done
-    ;;
+      ;;
     *)
       rvm_error "Package '${library}' is unknown."
-    ;;
+      ;;
   esac
 
   exit $?
-
 else
-  rvm_log "\nUsage:\n  'rvm pkg {install,uninstall} {readline,iconv,curl,openssl,zlib,autoconf,ncurses,pkgconfig,gettext,glib,mono,llvm,libxml2,libxslt,libyaml}'\n
-    'ree_dependencies' installs zlib, ncurses, readline, openssl and iconv in this order.\n
-    still need to add ' --with-readline-dir=\$rvm_usr_path --with-iconv-dir=\$rvm_usr_path --with-zlib-dir=\$rvm_usr_path --with-openssl-dir=\$rvm_usr_path' to 'rvm install ree'\n"
+  rvm_log "
+Usage:
+
+    rvm pkg {install,uninstall} {readline,iconv,curl,openssl,zlib,autoconf,ncurses,pkgconfig,gettext,glib,mono,llvm,libxml2,libxslt,libyaml}
+
+ree_dependencies installs zlib, ncurses, readline, openssl and iconv in this order.
+Still need to add --with-readline-dir=$rvm_usr_path --with-iconv-dir=$rvm_usr_path
+ --with-zlib-dir=$rvm_usr_path --with-openssl-dir=$rvm_usr_path to rvm install ree
+
+Starting with ruby **1.9.3** it is enough to use --with-opt-dir=$rvm_usr_path for all the packages.
+"
   exit 1
 fi

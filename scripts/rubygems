@@ -13,16 +13,15 @@ rubygems_remove()
 
   rvm_log "Removing old Rubygems files..."
 
-  if [[ "$rvm_ruby_interpreter" == "rbx" ]]
-  then
-    ruby="puts Config::CONFIG['prefix']"
-  elif [[ "$rvm_ruby_string" =~ ruby-1.9.3.* ]]
-  then
-    ruby="puts RbConfig::CONFIG.values_at('sitelibdir','vendorlibdir').detect { |path| File.directory?(File.join(path.to_s, 'rubygems')) }.to_s"
-  else
-    ruby="puts Config::CONFIG.values_at('sitelibdir','vendorlibdir').detect { |path| File.directory?(File.join(path.to_s, 'rubygems')) }.to_s"
-  fi
-  rubygems_path="$(ruby -rrbconfig -e "$ruby")"
+  case "$rvm_ruby_string" in
+    (rbx-*)
+      ruby="['prefix']"
+      ;;
+    (*)
+      ruby=".values_at('sitelibdir','vendorlibdir').detect{ |path| File.directory?(File.join(path.to_s, 'rubygems')) }.to_s"
+      ;;
+  esac
+  rubygems_path="$(ruby -rrbconfig -e "puts ::Kernel.const_get('RbConfig')::CONFIG$ruby")"
 
   # Remove common files installed by ruby gems.
   entries=(
@@ -48,6 +47,71 @@ can_switch_rubygems()
   esac
 }
 
+rubygems_version_list()
+{
+  curl -s https://api.github.com/repos/rubygems/rubygems/tags |
+    sed -n '/"name": / {s/^.*".*": "v\(.*\)".*$/\1/; p;}' |
+    sort -t. -k 1,1n -k 2,2n -k 3,3n -k 4,4n -k 5,5n
+}
+
+rubygems_master_sha()
+{
+  curl -s "https://api.github.com/repos/rubygems/rubygems/commits?page=last&per_page=1" | sed -n '/^    "sha":/ {s/^.*".*": "\(.*\)".*$/\1/;p;}'
+}
+
+rubygems_select_version_url()
+{
+  case "$version" in
+    latest|current)
+      case "$rvm_ruby_string" in
+        ruby-1.8*|ree-1.8*)
+          typeset _rbv
+          _rbv=${rvm_ruby_version##*.}
+          if (( _rbv <= 5 ))
+          then
+            version=1.3.5
+          elif (( _rbv == 6 ))
+          then
+            version=1.3.7
+          fi
+          ;;
+      esac
+      ;;
+  esac
+
+  case "$version" in
+    latest|current)
+      version="$(__rvm_db "${rvm_ruby_string//-/_}_rubygems_version")"
+      version="${version:-"$(__rvm_db "${rvm_ruby_interpreter}_rubygems_version")"}"
+      version="${version:-"$(__rvm_db "rubygems_version")"}"
+      ;;
+  esac
+
+  case "$version" in
+    latest-*)
+      version="${version#latest-}"
+      version="$(rubygems_version_list | GREP_OPTIONS="" \grep "^${version}\." | tail -n 1 )"
+      version="${version}"
+      ;;
+  esac
+
+  case "${version}" in
+    head|master)
+      typeset sha
+      sha="$(rubygems_master_sha)"
+      rvm_rubygems_version="$version"
+      rvm_gem_package_name="rubygems-rubygems-${sha:0:7}"
+      rvm_gem_url="https://github.com/rubygems/rubygems/tarball/${sha}"
+      ;;
+    *)
+      rvm_rubygems_version="$version"
+      rvm_gem_package_name="rubygems-${rvm_rubygems_version}"
+      rvm_rubygems_url=$(__rvm_db "rubygems_url")
+      rvm_gem_url="${rvm_rubygems_url}/${rvm_gem_package_name}.tgz"
+      ;;
+  esac
+}
+
 rubygems_setup()
 {
   __rvm_warn_on_rubyopt
@@ -56,50 +120,39 @@ rubygems_setup()
 
   unset RUBYOPT
 
-  if (( rvm_ruby_selected_flag == 0 ))
-  then
-    __rvm_select
-  fi
+  (( rvm_ruby_selected_flag == 0 )) || __rvm_select
 
-  rvm_rubygems_version="$version"
-  rvm_gem_package_name="rubygems-${rvm_rubygems_version}"
-  rvm_rubygems_url=$(__rvm_db "rubygems_url")
-  rvm_gem_url="${rvm_rubygems_url}/${rvm_gem_package_name}.tgz"
-  # awk '/download.php/ && /tgz/' < <(curl -s http://rubyforge.org/frs/?group_id=126&release_id=45995 ) | sed -e 's#^.*href="#http://rubyforge.org#;s#">.*$##'
+  rubygems_select_version_url
 
   # Sanity check... If setup.rb is missing from the rubygems source path,
   # something went wrong. Cleanup, aisle 3!
-  if [[ ! -f "${rvm_src_path}/$rvm_gem_package_name/setup.rb" ]]
-  then
+  [[ -f "${rvm_src_path}/$rvm_gem_package_name/setup.rb" ]] ||
     __rvm_rm_rf "${rvm_src_path}/$rvm_gem_package_name"
-  fi
 
-  if [[ ! -d "${rvm_src_path}/${rvm_gem_package_name}" ]]
+  if
+    [[ ! -d "${rvm_src_path}/${rvm_gem_package_name}" ]]
   then
     rvm_log "Retrieving $rvm_gem_package_name"
-
-    "$rvm_scripts_path/fetch" "$rvm_gem_url"
-    result=$?
-
-    if (( result > 0 ))
+    if
+      "$rvm_scripts_path/fetch" "$rvm_gem_url" "${rvm_gem_package_name}.tgz"
     then
+      true
+    else
+      result=$?
       rvm_error "There has been an error while trying to fetch the source. \nHalting the installation."
       return $result
     fi
 
-    if [[ ! -d "${rvm_src_path}/$rvm_gem_package_name" ]]
-    then
+    [[ -d "${rvm_src_path}/$rvm_gem_package_name" ]] ||
       \mkdir -p "${rvm_src_path}/$rvm_gem_package_name"
-    fi
 
-    __rvm_run "rubygems.extract" \
-      "gunzip < ${rvm_archives_path}/$rvm_gem_package_name.tgz | $rvm_tar_command xf - -C ${rvm_src_path}" \
-      "Extracting $rvm_gem_package_name ..."
+    __rvm_log_command "rubygems.extract" "Extracting $rvm_gem_package_name ..." \
+      __rvm_package extract "${rvm_archives_path}/$rvm_gem_package_name.tgz" "${rvm_src_path}"
   fi
 
   rubygems_remove # Remove old gems.
 
-  builtin cd "${rvm_src_path}/$rvm_gem_package_name"
+  chpwd_functions="" builtin cd "${rvm_src_path}/$rvm_gem_package_name"
 
   __rvm_run "rubygems.install" \
     "GEM_PATH=\"$GEM_PATH:${GEM_PATH%%@*}@global\" GEM_HOME=\"$GEM_HOME\" \"${rvm_ruby_binary}\" \"${rvm_src_path}/$rvm_gem_package_name/setup.rb\"" \
@@ -108,7 +161,7 @@ rubygems_setup()
   if (( result == 0 ))
   then
     typeset program_suffix
-    program_suffix="$(${rvm_ruby_binary} -rrbconfig -e "puts RbConfig::CONFIG['configure_args']")"
+    program_suffix="$( __rvm_ruby_config_get configure_args "${rvm_ruby_binary}" )"
     case "${program_suffix:-}" in
       (*--program-suffix=*)
         program_suffix="${program_suffix#*--program-suffix=}"
@@ -122,76 +175,38 @@ rubygems_setup()
     rvm_warn "Installation of rubygems did not complete successfully."
   fi
 
-  if [[ ! -z "$rvm_ruby_major_version" ]]
-  then
-    ruby_lib_gem_path="$rvm_ruby_home/lib/ruby/gems/${rvm_ruby_release_version}.${rvm_ruby_major_version}"
-  else
-    ruby_lib_gem_path="$rvm_ruby_home/lib/ruby/gems/$interpreter"
-  fi
-
-  # Add ruby's gem path to ruby's lib direcotry.
-  \mkdir -p "$(dirname $ruby_lib_gem_path)"
-
-  __rvm_rm_rf "$ruby_lib_gem_path"
-
-  if [[ -d "$rvm_ruby_gem_home" ]]
-  then
-    ln -fs "$rvm_ruby_gem_home" "$ruby_lib_gem_path"
-  fi
-
-  unset ruby_lib_gem_path
+  __rvm_rubygems_create_link "${rvm_ruby_binary}"
 }
 
-if ! builtin command -v ruby > /dev/null
-then
+rubygems_link()
+{
+  __rvm_rubygems_create_link
+}
+
+builtin command -v ruby > /dev/null || {
   rvm_error "'ruby' was not found, cannot install rubygems unless ruby is present (Do you have an RVM ruby installed & selected?)"
   exit 1
-fi
+}
 
 #
 # rvm rubygems X
 #
 args=($*)
+export version
 version="${args[0]}"
 args="$(echo ${args[@]:1})" # Strip trailing / leading / extra spacing.
 
-if [[ -z "$version" ]]
-then
-  rvm_error "Usage: rvm rubygems [x.y.z|latest|remove]"
+[[ -n "$version" ]] || {
+  rvm_error "Usage: rvm rubygems [x.y.z|latest-x.y|latest|remove]"
   exit 1
-fi
+}
 
 if can_switch_rubygems
 then
   case "$version" in
-    remove)
-      rubygems_remove
+    remove|link)
+      rubygems_$version
       ;;
-
-    latest|current) # Install latest known version of rubygems for the given interpreter.
-      case "$rvm_ruby_string" in
-        ruby-1.8*|ree-1.8*)
-          version=${rvm_ruby_version//*.}
-          if (( version < 7 ))
-          then
-            version=1.3.7
-          else
-            version="$(__rvm_db "${rvm_ruby_interpreter}_rubygems_version")"
-            version="${rvm_rubygems_version:-"$(__rvm_db "rubygems_version")"}"
-            true ${version:=1.6.2} # Sanity check.
-          fi
-          ;;
-        *)
-          version="$(__rvm_db "${rvm_ruby_string//-/_}_rubygems_version")"
-          version="${version:-"$(__rvm_db "${rvm_ruby_interpreter}_rubygems_version")"}"
-          version="${version:-"$(__rvm_db "rubygems_version")"}"
-          true ${version:=1.6.2} # Sanity check.
-          ;;
-      esac
-
-      rubygems_setup
-      ;;
-
     *)
       rubygems_setup
       ;;

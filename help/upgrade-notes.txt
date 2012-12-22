@@ -8,7 +8,7 @@
   * You _must_ read 'rvm requirements' for additional OS specific requirements for
     various rubies, and native-extension gems. Expect failures until those are met!
 
-  * For screen users, please do not forget to read https://rvm.beginrescueend.com/workflow/screen/.
+  * For screen users, please do not forget to read https://rvm.io/workflow/screen/.
     You will need to add 'shell -${SHELL}' to your $HOME/.screenrc to properly load RVM.
 
   * rvm_trust_rvmrcs has been changed to rvm_trust_rvmrcs_flag for consistency
@@ -30,7 +30,7 @@
       chmod +x $rvm_path/hooks/after_cd_[hook_name]
       chmod -x $rvm_path/hooks/after_use_[hook_name]
 
-  * If your shell exits on entering directory with freshly checked out sources
+  * If your shell exits on entering a directory with freshly checked out sources
     you should update .rvmrc file, and replace any `exit ` with `return `.
 
   * If you wish to use RVM in an interactive fashion in other shells
@@ -50,3 +50,23 @@
 
   * ZSH 4.3.15 is buggy, be careful with it, it can break RVM, especially multiuser installations,
     You should consider downgrading ZSH to 4.3.12 which has proven to work more reliable with RVM.
+
+  * Optionally you can run \`rvm tools rvm-env ruby bash\` which will generate
+    shebang wrappers for easier selecting ruby in scripts.
+
+  * RVM comes with set of default gems including 'bundler', 'rake', 'rubygems-bundler' and 'rvm' gems,
+    if you do not wish to get this gems install RVM with this flag: --without-gems="rvm rubygems-bundler"
+    this option is remembered, it's enough to use it once.
+
+  * If you wish to get more default(global) gems installed, install RVM with this flag: --with-gems="pry vagrant"
+    this option is remembered, it's enough to use it once.
+
+  * For first installed ruby RVM will: display rvm requirements, set it as default and use it.
+    To avoid this behavior either use full path to rvm binary or prefix it with `command `.
+
+  * Binary rubies are installed by default if available, you can read about it in help:
+      rvm help install
+      rvm help mount
+
+  * The default umask for multi-user installation got extended to `umask u=rwx,g=rwx,o=rx`,
+    comment it out to avoid automatic updates.
