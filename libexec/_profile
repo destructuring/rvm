@@ -14,7 +14,4 @@ fi
 unset gem
 unset cd
 
-export RBENV_ROOT=$rhome/.rbenv
-PATH=$RBENV_ROOT/shims:$RBENV_ROOT/bin:$PATH
-
 unset rhome
