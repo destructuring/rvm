@@ -1,1 +1,10 @@
-*
+erb-*
+gem-*
+irb-*
+jruby-*
+rake-*
+rdoc-*
+ree-*
+ri-*
+ruby-*
+testrb-*
