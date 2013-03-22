@@ -1,12 +1,8 @@
 # figure out the project root under which bin, lib live
-rhome="$(cd -P -- "$(dirname -- "$BASH_SOURCE")/../.." && pwd -P)"
+rhome="$(cd -P -- "$(dirname -- "$BASH_SOURCE")/.." && pwd -P)"
 
-if [[ -f /etc/profile.d/rvm.sh ]]; then
-  source /etc/profile.d/rvm.sh
-else
-  source $rhome/.rvm/scripts/rvm
-fi
-
+rvm_path="$rhome"
+source $rhome/scripts/rvm
 unset rhome
 
 if [[ "$#" != = ]]; then
