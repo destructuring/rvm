@@ -88,9 +88,8 @@ install_release()
   _version=$1
   log "Downloading RVM version ${_version}"
   get_and_unpack \
-    https://github.com/wayneeseguin/rvm/tarball/${_version} \
-    rvm-${_version}.tar.gz \
-    wayneeseguin-rvm-
+    https://github.com/wayneeseguin/rvm/archive/${_version}.tar.gz \
+    rvm-${_version}.tar.gz
 }
 
 install_head()
@@ -106,7 +105,7 @@ install_head()
       _branch=master
       ;;
     (*/*)
-      _repo=${1%/*}
+      _repo=${1%%/*}
       _branch=${1#*/}
       ;;
     (*)
@@ -116,23 +115,32 @@ install_head()
   esac
   log "Downloading RVM from ${_repo} branch ${_branch}"
   get_and_unpack \
-    https://github.com/${_repo}/rvm/tarball/${_branch} \
-    ${_repo}-rvm-${_branch}.tgz \
-    ${_repo}-rvm-
+    https://github.com/wayneeseguin/rvm/archive/${_branch}.tar.gz \
+    ${_repo}-rvm-${_branch//\//_}.tgz
+}
+
+# duplication marker dfkjdjngdfjngjcszncv
+# Drop in cd which _desotn't_ respect cdpath
+__rvm_cd()
+{
+    typeset old_cdpath ret
+    ret=0
+    old_cdpath="${CDPATH}"
+    CDPATH="."
+    chpwd_functions="" builtin cd "$@" || ret=$?
+    CDPATH="${old_cdpath}"
+    return $ret
 }
 
 get_and_unpack()
 {
-  typeset _url _file _patern
+  typeset _url _file _patern _return
   _url=$1
   _file=$2
-  _patern=$3
 
-  if curl -L ${_url} -o ${rvm_archives_path}/${_file}
-  then
-    true
-  else
-    typeset ret=$?
+  curl -L ${_url} -o ${rvm_archives_path}/${_file} ||
+  {
+    _return=$?
     case $ret in
       (60)
         log "
@@ -140,38 +148,32 @@ Could not download '${_url}'.
   Make sure your certificates are up to date as described above.
   To continue in insecure mode run 'echo insecure >> ~/.curlrc'.
 "
-        return 60
         ;;
       (*)
         log "
 Could not download '${_url}'.
   curl returned status '$ret'.
 "
-        return 1
         ;;
     esac
-  fi
+    return $_return
+  }
 
   [[ -d "${rvm_src_path}/rvm" ]] || \mkdir -p "${rvm_src_path}/rvm"
-  if ! builtin cd "${rvm_src_path}/rvm"
-  then
+  __rvm_cd "${rvm_src_path}/rvm" ||
+  {
+    _return=$?
     log "Could not change directory '${rvm_src_path}/rvm'."
-    return 2
-  fi
+    return $_return
+  }
 
   rm -rf ${rvm_src_path}/rvm/*
-  if ! $rvm_tar_command xzf ${rvm_archives_path}/${_file} ${rvm_tar_options:-}
-  then
+  $rvm_tar_command xzf ${rvm_archives_path}/${_file} ${rvm_tar_options:-} --strip-components 1 ||
+  {
+    _return=$?
     log "Could not extract RVM sources."
-    return 3
-  fi
-
-  if ! mv ${_patern}*/* .
-  then
-    log "Could not move RVM sources path."
-    return 4
-  fi
-  rm -rf ${_patern}*
+    return $_return
+  }
 }
 
 # Tracing, if asked for.
@@ -261,11 +263,16 @@ do
       fi
       ;;
 
-    --user-install|--auto)
+    --user-install|--auto-dotfiles|--ignore-dotfiles)
       token=${token#--}
       token=${token//-/_}
       export "rvm_${token}_flag"=1
       printf "%b" "Turning on ${token/_/ } mode.\n"
+      ;;
+
+    --auto)
+      export "rvm_auto_dotfiles_flag"=1
+      printf "%b" "Warning, --auto is deprecated in favor of --auto-dotfiles.\n"
       ;;
 
     --with-gems=*)
@@ -313,6 +320,11 @@ do
     --gems=*)
       token=${token#--gems=}
       install_gems+=( ${token//,/ } )
+      ;;
+
+    (--add-to-rvm-group)
+      export rvm_add_users_to_rvm_group="$1"
+      shift
       ;;
 
     help|usage)
@@ -424,8 +436,8 @@ if (( rvm_debug_flag == 1 ))
 then flags+=("--debug")
 fi
 
-if (( rvm_auto_flag == 1 ))
-then flags+=("--auto")
+if (( rvm_auto_dotfiles_flag == 1 ))
+then flags+=("--auto-dotfiles")
 fi
 
 if [[ -n "${rvm_with_gems:-}" ]]
@@ -434,6 +446,10 @@ fi
 
 if [[ -n "${rvm_without_gems:-}" ]]
 then flags+=("--without-gems=${rvm_without_gems}")
+fi
+
+if [[ -n "${rvm_add_users_to_rvm_group:-}" ]]
+then flags+=(--add-to-rvm-group "${rvm_add_users_to_rvm_group}")
 fi
 
 chmod +x ./scripts/install
@@ -446,15 +462,9 @@ then
     source ${rvm_scripts_path:-${rvm_path}/scripts}/version
     __rvm_version
 
-    {
-      echo "Ruby (and needed base gems) for your selection will be installed shortly."
-      echo "Before it happens, please read and execute the instructions below."
-      echo "Please use a separate terminal to execute any additional commands."
-      echo "Press 'q' to continue."
-    } | less
-
     for _ruby in ${install_rubies[@]}
     do
+      rvm requirements run force ${_ruby}
       command rvm install ${_ruby} -j 2
     done
     for _ruby in ${install_rubies[@]}
