@@ -8,7 +8,7 @@
 __rvm_has_opt()
 {
   {
-    [[ -n "${ZSH_VERSION}"  ]] && setopt | grep "^${1}$" >/dev/null 2>&1
+    [[ -n "${ZSH_VERSION}"  ]] && setopt | \grep "^${1}$" >/dev/null 2>&1
   } ||
   {
     [[ -n "${BASH_VERSION}" ]] && [[ ":$SHELLOPTS:" =~ ":${1}:" ]]
@@ -92,10 +92,13 @@ then
   rvm_prefix=$( dirname $rvm_path )
 fi
 
+# duplication marker kkdfkgnjfndgjkndfjkgnkfjdgn
 # guess rvm_user_install_flag if not set
-if [[ -z "${rvm_user_install_flag}" ]]
+if
+  [[ -z "${rvm_user_install_flag}" ]]
 then
-  if [[ "${rvm_prefix}" == "${HOME}" ]]
+  if
+    [[ "${rvm_prefix}" == "${HOME}" ]]
   then
     rvm_user_install_flag=1
   else
@@ -131,7 +134,7 @@ then
     __rvm_setup
 
     export rvm_version
-    rvm_version="$(cat "$rvm_path/VERSION") ($(cat "$rvm_path/RELEASE" 2>/dev/null))"
+    rvm_version="$(\cat "$rvm_path/VERSION") ($(\cat "$rvm_path/RELEASE" 2>/dev/null))"
 
     alias rvm-restart="rvm_reload_flag=1 source '${rvm_scripts_path:-${rvm_path}/scripts}/rvm'"
 
@@ -141,7 +144,7 @@ then
     then
       if [[ -s "$rvm_environments_path/default" && "${rvm_action}" != "switch" ]]
       then
-        source "$rvm_environments_path/default"
+        __rvm_load_environment "default"
       elif [[ -s "$rvm_path/environments/default" ]]
       then
         source "$rvm_path/environments/default"
@@ -168,6 +171,8 @@ then
 else
   source "${rvm_scripts_path:="$rvm_path/scripts"}/initialize"
   __rvm_setup
+  __rvm_fix_path_from_gem_path
+  __rvm_clean_path
 fi
 
 if [[ -t 0 && ${rvm_project_rvmrc:-1} -gt 0 ]] &&

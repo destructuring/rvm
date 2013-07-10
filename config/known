@@ -10,15 +10,20 @@
 [ruby-]1.9.3-p362
 [ruby-]1.9.3-p374
 [ruby-]1.9.3-p385
-[ruby-]1.9.3-[p392]
+[ruby-]1.9.3-p392
+[ruby-]1.9.3[-p429]
 [ruby-]1.9.3-head
 [ruby-]2.0.0-rc1
 [ruby-]2.0.0-rc2
-[ruby-]2.0.0[-p0]
+[ruby-]2.0.0-p0
+[ruby-]2.0.0[-p195]
 ruby-head
 
 # GoRuby
 goruby
+
+# Topaz
+topaz
 
 # TheCodeShop - MRI experimental patches
 tcs
@@ -37,7 +42,7 @@ jruby-1.6.5.1
 jruby-1.6.6
 jruby-1.6.7.2
 jruby-1.6.8
-jruby[-1.7.3]
+jruby[-1.7.4]
 jruby-head
 
 # Rubinius

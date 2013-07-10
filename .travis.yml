@@ -1,8 +1,14 @@
 language: ruby
 rvm:
   - 1.9.3
-install: gem install tf -v '>=0.4.1'
+install:
+  - gem update --system
+  - gem install bundler --pre
+  - gem install tf -v '>=0.4.1'
 before_script:
+  - "sudo chown -R $USER: $rvm_path"
+  - "sudo apt-get install gawk -y"
+  - "echo ruby_1.8.7_rubygems_version=1.8.25 > $rvm_path/user/db"
   - rvm alias delete default
   - hash -r
   - ./install
@@ -18,5 +24,4 @@ notifications:
   email:
     recipients:
       - mpapis@gmail.com
-      - me@deryldoucette.com
     on_failure: change

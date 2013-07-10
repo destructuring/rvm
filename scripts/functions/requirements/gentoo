@@ -1,57 +1,50 @@
 #!/usr/bin/env bash
 
-set -e
+source "$rvm_scripts_path/functions/requirements/gentoo_paludis"
+source "$rvm_scripts_path/functions/requirements/gentoo_pkgcore"
+source "$rvm_scripts_path/functions/requirements/gentoo_portage"
 
-function requirements_gentoo()
+requirements_gentoo_before()
 {
-  typeset -a command_to_run command_flags
-  command_to_run=()
-  command_flags=()
-
-  while
-    (( $# ))
+  typeset __iterator
+  for __iterator in gentoo_portage gentoo_paludis gentoo_pkgcore
   do
-    case "$1" in
-      (echo)
-        command_to_run+=( $1 )
-        shift
-        ;;
-      (force|run)
-        shift
-        ;;
-      (*)
-        break
-        ;;
-    esac
+    if
+      requirements_find_${__iterator}
+    then
+      __lib_type=${__iterator}
+      return 0
+    fi
   done
 
-  (( UID == 0 )) || command_to_run+=( sudo )
-
-  while
-    (( $# ))
-  do
-    case "$1" in
-      (update-system)
-        "${command_to_run[@]}" emerge --sync
-        ;;
-      (rvm)
-        "${command_to_run[@]}" emerge bash curl git patch
-        ;;
-      (jruby*)
-        "${command_to_run[@]}" emerge dev-java/sun-jdk dev-java/sun-jre-bin
-        ;;
-      (ir*)
-        "${command_to_run[@]}" emerge dev-lang/mono
-        ;;
-      (opal)
-        "${command_to_run[@]}" emerge nodejs
-        ;;
-      (*)
-        "${command_to_run[@]}" emerge libiconv readline zlib openssl curl git libyaml sqlite libxslt libtool gcc autoconf automake bison m4
-        ;;
-    esac
-    shift
-  done
+  # fallback
+  __lib_type=gentoo_portage
 }
 
-requirements_gentoo "$@"
+requirements_gentoo_define()
+{
+  case "$1" in
+    (rvm)
+      requirements_check net-misc/curl sys-devel/patch app-shells/bash
+      ;;
+    (jruby*head)
+      requirements_check virtual/jdk dev-vcs/git dev-java/ant-core
+      ;;
+    (jruby*)
+      requirements_check virtual/jre
+      ;;
+    (ir*)
+      requirements_check dev-lang/mono
+      ;;
+    (opal)
+      requirements_check net-libs/nodejs
+      ;;
+    (*-head)
+      requirements_gentoo_define "${1%-head}"
+      requirements_check dev-vcs/git
+      ;;
+    (*)
+      requirements_check virtual/libiconv sys-libs/readline sys-libs/zlib dev-libs/openssl net-misc/curl dev-libs/libyaml dev-db/sqlite dev-libs/libxslt sys-devel/libtool sys-devel/gcc sys-devel/autoconf sys-devel/automake sys-devel/bison sys-devel/m4
+      ;;
+  esac
+}

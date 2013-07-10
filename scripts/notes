@@ -7,22 +7,26 @@ fi
 if [[ "$1" == "initial" ]]
 then
   notes_type=Upgrade
-  PAGER=cat
+  PAGER=\cat
   new_notes()
   {
     typeset file
     file="$rvm_path/config/displayed-notes.txt"
-    rm -f "${file}"
+    \rm -f "${file}"
     tee "${file}" > /dev/null
   }
   important_message()
   {
     rvm_error "$@"
   }
+  important_redirect()
+  {
+    \cat - >&2
+  }
 elif [[ "$1" == "upgrade" ]]
 then
   notes_type=Upgrade
-  PAGER=cat
+  PAGER=\cat
   new_notes()
   {
     typeset file
@@ -33,21 +37,29 @@ then
       printf "  * No new notes to display.\n" >&2 ||
       true
     ) | sed '/^[^<]/ d ; s/^< //'
-    mv -f "${file}.new" "${file}"
+    \mv -f "${file}.new" "${file}"
   }
   important_message()
   {
     rvm_error "$@"
   }
+  important_redirect()
+  {
+    \cat - >&2
+  }
 else
   notes_type=Installation
   new_notes()
   {
-    cat
+    \cat
   }
   important_message()
   {
     rvm_warn "$@"
+  }
+  important_redirect()
+  {
+    \cat -
   }
 fi
 
@@ -85,19 +97,21 @@ $notes_type Notes:
   : \
     rvm_scripts_path:${rvm_scripts_path:-$rvm_path/scripts}:
 
-  cat "$rvm_path/help/upgrade-notes.txt" | sed \
+  \cat "$rvm_path/help/upgrade-notes.txt" | sed \
    -e "s/\${SHELL}/${SHELL//\//\/}/g" \
    -e "s/\${rvm_scripts_path}/${rvm_scripts_path//\//\/}/g"
 
   printf "\n"
 
-  if [[ -f /etc/profile.d/rvm.sh ]] &&
+  if
+    [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
+    [[ -f /etc/profile.d/rvm.sh ]] &&
     ! GREP_OPTIONS="" \grep rvm_stored_umask /etc/profile.d/rvm.sh >/dev/null
   then
     important_message "
   * WARNING: your RVM loading script \`/etc/profile.d/rvm.sh\` is deprecated
     and causes you to have \`umask g+w\` set in your shell,
-    run \`rvm get head --auto\` again to fix your scripts.
+    run \`rvm get head --auto-dotfiles\` again to fix your scripts.
 "
   fi
 
@@ -107,7 +121,7 @@ $notes_type Notes:
   * WARNING: You are using apt-get broken RVM, you should now:
 
       sudo apt-get --purge remove ruby-rvm
-      sudo rm -rf /usr/share/ruby-rvm /etc/rvmrc /etc/profile.d/rvm.sh
+      sudo \rm -rf /usr/share/ruby-rvm /etc/rvmrc /etc/profile.d/rvm.sh
 
     open new terminal and validate environment is clean from old rvm settings:
 
@@ -115,7 +129,7 @@ $notes_type Notes:
 
     install RVM:
 
-      curl -L https://get.rvm.io | bash -s stable
+      curl -L https://get.rvm.io | bash -s stable --autolibs=enable
 
     for details check:
 
@@ -123,16 +137,20 @@ $notes_type Notes:
 "
   fi
 
-  if [[ -n "${RUBYOPT:-""}" ]]
-  then
-    important_message "
-  * WARNING: You have RUBYOPT set in your current environment.
+  for __var in RUBYOPT RUBYLIB
+  do
+    if eval "[[ -n \"\${${__var}:-}\" ]]"
+    then
+      important_message "
+  * WARNING: You have ${__var} set in your current environment.
     This may cause rubies to not work as you expect them to as it is not supported
-    by all of them If errors show up, please try unsetting RUBYOPT first.
+    by all of them If errors show up, please try unsetting ${__var} first.
 "
-  fi
+    fi
+  done
 
   if
+    [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
     [[ -f ~/.profile ]] && ! [[ "$rvm_path" == "/usr/local/rvm" || $UID == 0 ]] &&
     ! GREP_OPTIONS="" \grep 'source.*profile' ~/.bash_profile >/dev/null 2>&1 &&
     ! GREP_OPTIONS="" \grep 'source.*profile' ~/.bash_login >/dev/null 2>&1
@@ -163,8 +181,9 @@ $notes_type Notes:
     fi
   done
   if
+    [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
     (( ${#__files[@]} )) &&
-    GREP_OPTIONS="" \grep -rn 'PATH=' "${__files[@]}" |
+    GREP_OPTIONS="" \grep -rn '^[^#]*PATH=' "${__files[@]}" |
       GREP_OPTIONS="" \grep -vE '[[:alnum:]_]PATH=|PATH=.*PATH'
   then
     # account for grep not showing file name for just one file checked
@@ -177,7 +196,7 @@ $notes_type Notes:
     for details check https://github.com/wayneeseguin/rvm/issues/1351#issuecomment-10939525
     to avoid this warning append #PATH.
 "
-  fi
+  fi | important_redirect
 
   if [[ -n "${GEM_HOME:-}" ]] && ! [[ "${GEM_HOME}" =~ "$rvm_path/" ]]
   then
@@ -190,45 +209,63 @@ $notes_type Notes:
 
   if
     [[ -f /etc/rvmrc && -s /etc/rvmrc ]] &&
-    grep "rvm_configure_env=('LDFLAGS=-L/opt/sm/pkg/active/lib CFLAGS=-I/opt/sm/pkg/active/include CPATH=/opt/sm/pkg/active/include')" /etc/rvmrc >/dev/null
+    GREP_OPTIONS="" \grep 'rvm_configure_env=.*/opt/sm' /etc/rvmrc >/dev/null 2>&1
   then
     important_message "
   * WARNING: you have 'rvm_configure_env' in /etc/rvmrc, run the following to fix:
 
-      sudo sed -i'' -e \"s#rvm_configure_env=('LDFLAGS=-L/opt/sm/pkg/active/lib CFLAGS=-I/opt/sm/pkg/active/include CPATH=/opt/sm/pkg/active/include')#rvm_configure_env=('LDFLAGS=-L/opt/sm/pkg/active/lib' 'CFLAGS=-I/opt/sm/pkg/active/include' 'CPATH=/opt/sm/pkg/active/include')#\" /etc/rvmrc
+      sudo sed -i'' -e \"/rvm_configure_env=.*\/opt\/sm/d\" /etc/rvmrc
+      rvm autolibs smf
 "
   fi
 
   if
     [[ -z "${rvm_ignore_gemrc_issues:-}" ]]
   then
-    typeset -a _gemrc_files
-    _gemrc_files=()
-    for gemrc in "/etc/gemrc" "${HOME}/.gemrc"
+    typeset _check _gemrc _found
+    _found=0
+    for _gemrc in "/etc/gemrc" "${HOME}/.gemrc"
     do
-      if [[ -r "${gemrc}" ]]
-      then _gemrc_files+=( "${gemrc}" )
+      if
+        [[ -r "${_gemrc}" ]]
+      then
+        for _check in " -n" --user-install gemhome gempath
+        do
+          if
+            GREP_OPTIONS="" \grep -E -- '^'"${_check}"'|^[^#]*'"${_check}" "${_gemrc}" >/dev/null
+          then
+            (( _found++ ))
+            important_message "  * WARNING: Found ${_check} in ${_gemrc}, please remove it, as it will break rubygems in RVM."
+          fi
+        done
       fi
     done
     if
-      (( ${#_gemrc_files[@]} )) &&
-      GREP_OPTIONS="" \grep -E -- '^[^#].*( -n|--user-install)' "${_gemrc_files[@]}" >/dev/null
+      (( _found ))
     then
-      important_message "
-  * WARNING: Found -n / --user-install in one of ${_gemrc_files[@]}, please remove it, as it will break rubygems in RVM.
-    If it is intended or a mistake 'export rvm_ignore_gemrc_issues=1' to avoid this warning.
+      important_message "    If it is intended or a mistake 'export rvm_ignore_gemrc_issues=1' to avoid this warning.
 "
     fi
   fi
-} | new_notes | eval "${PAGER:-cat}"
+
+  if
+    [[ -x /usr/local/bin/rvm ]]
+  then
+    important_message "
+  * WARNING: you have '/usr/local/bin/rvm', it's most likely a bug of old installation, in most cases it's safe to remove it:
+
+    rm /usr/local/bin/rvm
+"
+  fi
+} | new_notes | eval "${PAGER:-\cat}"
 
 rvm_warn "
 # RVM:  Shell scripts enabling management of multiple ruby environments.
 # RTFM: https://rvm.io/
 # HELP: http://webchat.freenode.net/?channels=rvm (#rvm on irc.freenode.net)
-# Cheatsheet: http://cheat.errtheblog.com/s/rvm/
+# Cheatsheet: http://cheat.errtheblog.com/s/rvm
 # Screencast: http://screencasts.org/episodes/how-to-use-rvm
 "
 
-rvm_log "# In case of any issues read output of 'rvm requirements' and/or 'rvm notes'
+rvm_log "# In case of any issues run 'rvm requirements' or read 'rvm notes'
 "
