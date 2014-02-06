@@ -32,3 +32,4 @@ test/rvm_test_suite/ruby/db/*.sqlite
 /installed.at
 /RELEASE
 /config/displayed-notes.txt
+/repos
