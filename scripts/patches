@@ -9,7 +9,7 @@ __rvm_patch_lookup_path()
   echo "/"
   [[ -z "${rvm_patch_original_pwd:-""}" ]] || echo "$rvm_patch_original_pwd/"
   echo "$PWD/"
-  __rvm_ruby_string_paths_under "$rvm_patches_path" | sed 's/$/\//' | sort -r
+  __rvm_ruby_string_paths_under "$rvm_patches_path" | __rvm_sed 's/$/\//' | sort -r
   return $?
 }
 
@@ -26,7 +26,7 @@ __rvm_expand_patch_name()
   then
     echo "${expanded_patch_name}"
   elif
-    [[ "$name" != "default" ]]
+    [[ "$name" != "default" && "$name" != "${_system_name_lowercase}" ]]
   then
     echo "${name}${level:+%}${level:-}"
   fi

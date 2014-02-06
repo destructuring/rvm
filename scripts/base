@@ -5,13 +5,13 @@
 #duplicated from scripts/rvm - rare reload issue
 __rvm_has_opt()
 {
-  {
-    [[ -n "${ZSH_VERSION}"  ]] && setopt | \grep "^${1}$" >/dev/null 2>&1
-  } ||
-  {
-    [[ -n "${BASH_VERSION}" ]] && [[ ":$SHELLOPTS:" =~ ":${1}:" ]]
-  } ||
-  return 1
+  # pre-gnu
+  if [[ -n "${ZSH_VERSION}"  ]] && setopt | GREP_OPTIONS="" \grep "^${1}$" >/dev/null 2>&1
+  then return 0
+  elif [[ -n "${BASH_VERSION}" ]] && [[ ":$SHELLOPTS:" =~ ":${1}:" ]]
+  then return 0
+  else return 1
+  fi
 }
 
 if __rvm_has_opt "errexit"
@@ -28,7 +28,7 @@ then
   if [[ -z "${ZSH_VERSION:-}" ]]
   then
     export PS4
-    PS4="+ \$(date \"+%s.%N\") \${BASH_SOURCE##\${rvm_path:-}} : \${FUNCNAME[0]:+\${FUNCNAME[0]}()}  \${LINENO} > "
+    PS4="+ \$(__rvm_date \"+%s.%N\" 2>/dev/null) \${BASH_SOURCE##\${rvm_path:-}} : \${FUNCNAME[0]:+\${FUNCNAME[0]}()}  \${LINENO} > "
   fi
 fi
 
@@ -54,6 +54,7 @@ then
   do
     if [[ -f "$rvmrc" ]]
     then
+      # pre-gnu
       if GREP_OPTIONS="" \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
       then
         printf "%b" "
@@ -70,10 +71,15 @@ Error:
   unset rvm_rvmrc_files
 fi
 
+# duplication marker jdgkjnfnkjdngjkfnd4fd
 export rvm_path
 if [[ -z "${rvm_path:-}" ]]
 then
-  if (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
+  if [[ -n "${BASH_SOURCE:-$_}" && -f "${BASH_SOURCE:-$_}" ]]
+  then
+    rvm_path="${BASH_SOURCE:-$_}"
+    rvm_path="$( \cd "${rvm_path%/scripts/base}">/dev/null; pwd )"
+  elif (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
   then rvm_path="/usr/local/rvm"
   elif [[ -d "${HOME}/.rvm" ]]
   then rvm_path="${HOME}/.rvm"
@@ -97,14 +103,16 @@ case " ${rvm_base_except:-} " in
   (*)
     source "$rvm_scripts_path/selector"
     source "$rvm_scripts_path/selector_gemsets"
+    source "$rvm_scripts_path/selector_late"
+    source "$rvm_scripts_path/selector_parse"
     ;;
 esac
 
 typeset -a scripts
 scripts=(
-  logging support utility init cleanup env rvmrc install environment gemset db checksum
+  logging db support utility init cleanup env rvmrc install environment gemset checksum
 )
-for entry in ${scripts[@]} ; do
-  source "$rvm_scripts_path/functions/$entry"
+for entry in ${scripts[@]}
+do source "$rvm_scripts_path/functions/$entry"
 done
 unset scripts entry rvm_base_except

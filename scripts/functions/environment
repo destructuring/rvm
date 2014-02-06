@@ -6,7 +6,9 @@ __rvm_env_string()
 
   _path="${GEM_HOME:-""}"
 
-  _string="${_path//*gems\//}"
+  #_string="${_path//*gems\//}"
+  _string="${_path#${rvm_gems_path//\//\/}/}"
+  _string="${_string//*gems\//}"
   _string="${_string//\/*/}"
 
   printf "%b" "${_string:-system}\n"
@@ -41,7 +43,7 @@ __rvm_expand_ruby_string()
       current_ruby="${current_ruby%@*}"
 
       rvm_silence_logging=1 "$rvm_scripts_path/gemsets" list strings \
-        | \sed "s/ (default)//; s/^/$current_ruby${rvm_gemset_separator:-@}/ ; s/@default// ;"
+        | __rvm_sed "s/ (default)//; s/^/$current_ruby${rvm_gemset_separator:-@}/ ; s/@default// ;"
       ;;
 
     current)
@@ -49,7 +51,7 @@ __rvm_expand_ruby_string()
       ;;
 
     aliases)
-      awk -F= '{print $string}' < "$rvm_path/config/alias"
+      __rvm_awk -F= '{print $string}' < "$rvm_path/config/alias"
       ;;
 
     *)
@@ -91,7 +93,7 @@ __rvm_ensure_has_environment_files()
     \mkdir -p "$rvm_environments_path"
   fi
 
-  if [[ ! -s "$file_name" ]] || ! GREP_OPTIONS="" \grep 'rvm_env_string=' "$file_name" >/dev/null
+  if [[ ! -s "$file_name" ]] || ! __rvm_grep 'rvm_env_string=' "$file_name" >/dev/null
   then
     \rm -f "$file_name"
     printf "%b" \
@@ -169,9 +171,10 @@ __variables_definition()
   __variables_list=(
     rvm_head_flag rvm_ruby_selected_flag rvm_user_install_flag rvm_path_flag rvm_cron_flag
     rvm_static_flag rvm_default_flag rvm_loaded_flag rvm_llvm_flag rvm_skip_autoreconf_flag
-    rvm_18_flag rvm_19_flag rvm_20_flag rvm_force_autoconf_flag rvm_dump_environment_flag
+    rvm_18_flag rvm_19_flag rvm_20_flag rvm_21_flag
+    rvm_force_autoconf_flag rvm_dump_environment_flag rvm_curl_flags
     rvm_verbose_flag rvm_debug_flag rvm_trace_flag __array_start
-    rvm_pretty_print_flag rvm_create_flag rvm_remove_flag
+    rvm_pretty_print_flag rvm_create_flag rvm_remove_flag rvm_movable_flag
     rvm_gemdir_flag rvm_reload_flag rvm_auto_reload_flag rvm_disable_binary_flag
     rvm_ignore_gemsets_flag rvm_skip_gemsets_flag rvm_install_on_use_flag rvm_remote_flag
     rvm_verify_downloads_flag rvm_skip_openssl_flag rvm_gems_cache_path rvm_gems_path
@@ -179,24 +182,25 @@ __variables_definition()
     rvm_docs_path rvm_environments_path rvm_examples_path rvm_gems_path rvm_gemsets_path
     rvm_help_path rvm_hooks_path rvm_lib_path rvm_log_path rvm_patches_path rvm_repos_path
     rvm_rubies_path rvm_scripts_path rvm_src_path rvm_tmp_path rvm_user_path rvm_usr_path
-    rvm_wrappers_path rvm_externals_path rvm_stored_errexit rvm_ruby_strings rvm_ruby_binary
+    rvm_wrappers_path rvm_stored_errexit rvm_ruby_strings rvm_ruby_binary
     rvm_ruby_gem_home rvm_ruby_home rvm_ruby_interpreter rvm_ruby_irbrc rvm_ruby_major_version
     rvm_ruby_minor_version rvm_ruby_package_name rvm_ruby_patch_level rvm_ruby_release_version
     rvm_ruby_repo_url rvm_ruby_repo_branch rvm_ruby_revision rvm_ruby_tag rvm_ruby_sha
     rvm_ruby_version rvm_ruby_package_file rvm_ruby_name rvm_ruby_name rvm_ruby_args
     rvm_ruby_user_tag rvm_ruby_patch detected_rvm_ruby_name __rvm_env_loaded next_token
     rvm_error_message rvm_gemset_name rvm_parse_break rvm_token rvm_action rvm_export_args
-    rvm_gemset_separator rvm_expanding_aliases rvm_architectures rvm_tar_command rvm_tar_options
+    rvm_gemset_separator rvm_expanding_aliases rvm_tar_command rvm_tar_options
     rvm_patch_original_pwd rvm_project_rvmrc rvm_archive_extension rvm_autoinstall_bundler_flag
     rvm_codesign_identity rvm_expected_gemset_name rvm_with_gems rvm_without_gems
     rvm_ignore_dotfiles_flag rvm_latest_binary_flag rvm_fuzzy_flag rvm_autolibs_flag
     rvm_autolibs_flag_number rvm_autolibs_flag_runner rvm_quiet_curl_flag rvm_max_time_flag
     rvm_error_clr   rvm_warn_clr   rvm_debug_clr   rvm_notify_clr   rvm_reset_clr
     rvm_error_color rvm_warn_color rvm_debug_color rvm_notify_color rvm_reset_color
+    rvm_log_timestamp rvm_log_filesystem rvm_log_namelen rvm_show_log_lines_on_error
   )
 
   __array_list=(
-    rvm_patch_names rvm_ree_options rvm_autoconf_flags
+    rvm_patch_names rvm_ree_options rvm_autoconf_flags rvm_architectures
   )
 
   case "${__method}" in
@@ -232,13 +236,13 @@ __rvm_setup()
   then
     export rvm_zsh_clobber rvm_zsh_nomatch
     # Set clobber for zsh users, for compatibility with bash's append operator ( >> file ) behavior
-    if setopt | GREP_OPTIONS="" \grep -s '^noclobber$' >/dev/null 2>&1
+    if setopt | __rvm_grep -s '^noclobber$' >/dev/null 2>&1
     then rvm_zsh_clobber=0
     else rvm_zsh_clobber=1
     fi
     setopt clobber
     # Set no_nomatch so globs that don't match any files don't print out a warning
-    if setopt | GREP_OPTIONS="" \grep -s '^nonomatch$' >/dev/null 2>&1
+    if setopt | __rvm_grep -s '^nonomatch$' >/dev/null 2>&1
     then rvm_zsh_nomatch=0
     else rvm_zsh_nomatch=1
     fi
@@ -351,7 +355,7 @@ __rvm_ensure_is_a_function()
 {
   if [[ ${rvm_reload_flag:=0} == 1 ]] || ! is_a_function rvm
   then
-    for script in version selector selector_gemsets cd cli override_gem
+    for script in version selector selector_gemsets selector_late cd functions/cli cli override_gem
     do
       if [[ -f "$rvm_scripts_path/$script" ]]
       then

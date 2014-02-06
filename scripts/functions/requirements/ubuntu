@@ -15,8 +15,8 @@ requirements_debian_lib_installed()
 {
   dpkg-query -s "${1}:${__architecture}" >/dev/null 2>&1 ||
   dpkg-query -s "${1}:all"               >/dev/null 2>&1 ||
-  dpkg-query -s "$1" 2>/dev/null | grep "Architecture: ${__architecture}" >/dev/null ||
-  dpkg-query -s "$1" 2>/dev/null | grep "Architecture: all"               >/dev/null ||
+  dpkg-query -s "$1" 2>/dev/null | __rvm_grep "Architecture: ${__architecture}" >/dev/null ||
+  dpkg-query -s "$1" 2>/dev/null | __rvm_grep "Architecture: all"               >/dev/null ||
   return $?
 }
 
@@ -64,21 +64,27 @@ requirements_debian_define()
       requirements_check bash curl patch bzip2 ca-certificates gawk
       ;;
 
-    (jruby*head)
-      requirements_check g++ ant
-      update-alternatives --list javac >/dev/null 2>&1 ||
-        requirements_check_fallback \
-          openjdk-7-jdk oracle-j2sdk1.7 \
-          opendjk-6-jdk oracle-j2sdk1.6
-      requirements_check_fallback git git-core
-      ;;
-
     (jruby*)
-      requirements_check g++
-      update-alternatives --list java >/dev/null 2>&1 ||
-        requirements_check_fallback \
-          openjdk-7-jre-headless openjdk-7-jdk oracle-j2sdk1.7 \
-          openjdk-6-jre-headless opendjk-6-jdk oracle-j2sdk1.6
+      if
+        is_head_or_disable_binary "$1"
+      then
+        requirements_check g++
+        update-alternatives --list javac >/dev/null 2>&1 ||
+          requirements_check_fallback \
+            openjdk-7-jdk oracle-j2sdk1.7 \
+            opendjk-6-jdk oracle-j2sdk1.6
+        requirements_check_fallback git git-core
+        if is_jruby_post17 "$1"
+        then __rvm_which mvn >/dev/null || requirements_check_fallback maven maven2
+        else __rvm_which ant >/dev/null || requirements_check ant
+        fi
+      else
+        requirements_check g++
+        update-alternatives --list java >/dev/null 2>&1 ||
+          requirements_check_fallback \
+            openjdk-7-jre-headless openjdk-7-jdk oracle-j2sdk1.7 \
+            openjdk-6-jre-headless opendjk-6-jdk oracle-j2sdk1.6
+      fi
       ;;
 
     (ir*)
@@ -99,7 +105,7 @@ requirements_debian_define()
       requirements_check \
         g++ gcc make libc6-dev patch openssl ca-certificates libreadline6 \
         libreadline6-dev curl zlib1g zlib1g-dev libssl-dev libyaml-dev \
-        libsqlite3-dev sqlite3 libxml2-dev libxslt1-dev autoconf libc6-dev \
+        libsqlite3-dev sqlite3 autoconf \
         libgdbm-dev libncurses5-dev automake libtool bison pkg-config libffi-dev
       ;;
   esac

@@ -18,8 +18,8 @@ maglev_install()
 
   __rvm_cd "${rvm_src_path}"
 
-  system="$(uname -s)"
-  arch="$(uname -m)"
+  system="${_system_type}"
+  arch="${_system_arch}"
   [ "${system}-${arch}" == "Darwin-x86_64" ] && arch="i386"
 
   if [[ ! -d "${rvm_src_path}/$rvm_ruby_string" ]] || (( ${rvm_head_flag:=0} == 1 ))
@@ -38,7 +38,7 @@ maglev_install()
   then
     __rvm_cd "${rvm_src_path}/$rvm_ruby_string"
 
-    rvm_gemstone_package_file="GemStone-$(GREP_OPTIONS="" \grep "^GEMSTONE" version.txt | cut -f2 -d-).${system}-${arch}"
+    rvm_gemstone_package_file="GemStone-$(__rvm_grep "^GEMSTONE" version.txt | cut -f2 -d-).${system}-${arch}"
 
     rvm_gemstone_url="$maglev_url/${rvm_gemstone_package_file}.${rvm_archive_extension}"
   fi
@@ -89,7 +89,7 @@ maglev_install()
   __rvm_rm_rf $rvm_ruby_home
 
   __rvm_run "install" \
-    "/bin/cp -Rf ${rvm_src_path}/$rvm_ruby_string $rvm_ruby_home" \
+    "__rvm_cp -Rf ${rvm_src_path}/$rvm_ruby_string $rvm_ruby_home" \
     "Installing maglev to $rvm_ruby_home"
 
   (
@@ -101,13 +101,6 @@ maglev_install()
   done
   unset binary
   )
-
-  binaries=(maglev-ruby maglev-irb maglev-gem)
-
-  for binary in "${binaries[@]}"
-  do
-    __rvm_inject_gem_env "$rvm_ruby_home/bin/$binary"
-  done
 
   __rvm_cd "$rvm_ruby_home"
 
@@ -139,7 +132,7 @@ maglev_install()
   if [[ -d "$rvm_ruby_home/lib/maglev/gems/1.8" ]]
   then
     rvm_log "Copying across included gems"
-    \cp -R "$rvm_ruby_home/lib/maglev/gems/1.8/" "$rvm_ruby_gem_home/"
+    __rvm_cp -R "$rvm_ruby_home/lib/maglev/gems/1.8/" "$rvm_ruby_gem_home/"
   fi
 
   unset compatible_ruby
@@ -152,4 +145,6 @@ maglev_install()
   __rvm_generate_wrappers
 
   rvm_create_flag=1 __rvm_use
+
+  __rvm_fetch_ruby_cleanup
 }

@@ -1,5 +1,76 @@
 #!/usr/bin/env bash
 
+## common part of requirements_rvm_pkg_* extracted from scripts/functions/requirements/rvm_pkg ->
+requirements_rvm_pkg_config()
+{
+  PKG_CONFIG_PATH="${rvm_usr_path:-${rvm_path}/usr}/lib/pkgconfig:${rvm_usr_path:-${rvm_path}/usr}/lib64/pkgconfig:/opt:/usr:/usr/local" pkg-config "$@"
+}
+
+requirements_rvm_pkg_lib_installed()
+{
+  if is_a_function ${1}_installed && ${1}_installed
+  then return 0
+  fi
+  requirements_rvm_pkg_config --list-all | __rvm_grep "^$1[- ]" >/dev/null || return $?
+  true
+}
+
+requirements_rvm_pkg_libs_install()
+{
+  while
+    (( $# ))
+  do
+    PKG_CONFIG_LIBDIR="${rvm_usr_path:-${rvm_path}/usr}/lib/pkgconfig" install_$1 || return $?
+    shift
+  done
+}
+
+requirements_rvm_pkg_after_uniqe_paths()
+{
+  typeset __lib __lib_full_name
+  for __lib
+  do
+    __lib_full_name=$( requirements_rvm_pkg_config --list-all | __rvm_awk "/^${__lib}[- ]/{print \$1}" )
+    if
+      [[ -n "${__lib_full_name}" ]]
+    then
+      requirements_rvm_pkg_config ${__lib_full_name} --variable=prefix
+    elif
+      [[ "${__lib}" == 'readline' ]]
+    then
+      # http://lists.gnu.org/archive/html/bug-readline/2010-09/msg00002.html
+      echo ${rvm_usr_path:-${rvm_path}/usr}
+    else
+      rvm_error "Can not find ${__lib} in 'pkg-config'"
+    fi
+  done | sort -u
+}
+
+requirements_rvm_pkg_configure()
+{
+  typeset -a __packages
+  typeset __package
+  __rvm_read_lines __packages <(
+    requirements_rvm_pkg_after_uniqe_paths "$@"
+  )
+  for __package in "${__packages[@]}"
+  do __rvm_update_configure_opt_dir "$1" "$__package"
+  done
+}
+## common part of requirements_rvm_pkg_* extracted from scripts/functions/requirements/rvm_pkg <-
+
+## helper for checking marking missing custom packages
+requirements_rvm_pkg_lib_installed_custom()
+{
+  while
+     (( $# ))
+  do
+    requirements_rvm_pkg_lib_installed "$1" || packages_custom+=( "$1" )
+    shift
+  done
+}
+
+## Real work for installing packages from source
 install_package()
 {
   __rvm_db "${package}_url" "package_url"
@@ -31,7 +102,7 @@ install_package()
       for patch in $(echo $patches | \tr ',' ' ')
       do
         if
-          ! __rvm_run "$package/patch" "patch -p0 -f -i $patch" "Applying patch '$patch'..."
+          ! __rvm_run "$package/patch" "__rvm_patch -p0 -f -i $patch" "Applying patch '$patch'..."
         then
           rvm_error "Patch $patch did not apply cleanly... back to the patching board :("
           exit 1
@@ -41,23 +112,18 @@ install_package()
 
     if
       [[ "${rvm_skip_autoreconf_flag:-0}" == 0 ]] &&
-      __rvm_which autoreconf >/dev/null 2>&1 &&
-      __rvm_which libtoolize >/dev/null 2>&1 &&
       [[ -f configure.ac || -f configure.in ]]
     then
       if
         (( ${#rvm_autoconf_flags[@]} == 0 ))
       then
-        if
-          uname -s | GREP_OPTIONS="" \grep -iE 'cygwin|mingw' >/dev/null
-        then
-          rvm_autoconf_flags=( -ivf )  # no symlinks on windows :(
-        else
-          rvm_autoconf_flags=( -is --force )
-        fi
+        case "${_system_type}" in
+          (Windows) rvm_autoconf_flags=( -ivf )        ;; # no symlinks on windows :(
+          (*)       rvm_autoconf_flags=( -is --force ) ;;
+        esac
       fi
       __rvm_log_command "$package/autoreconf" "Prepare $package in $rvm_src_path/$package-$version." \
-        autoreconf "${rvm_autoconf_flags[@]}"
+        __rvm_autoreconf "${rvm_autoconf_flags[@]}"
     fi
 
     [[ -n "${rvm_configure_env[*]}" ]] || rvm_configure_env=() # zsh can assume empty var => ( '' )
@@ -76,16 +142,16 @@ install_package()
     touch "$rvm_path/config/packages"
     if [[ "$action" == "uninstall" ]]
     then
-      __rvm_log_command "$package/make.uninstall" "Uninstalling $package from ${prefix_path:-$rvm_usr_path}"  make uninstall &&
+      __rvm_log_command "$package/make.uninstall" "Uninstalling $package from ${prefix_path:-$rvm_usr_path}"  __rvm_make uninstall &&
       __rvm_cd "$rvm_src_path" &&
       __rvm_log_command "$package/rm_src.uninstall" "Removing ${package}-${version} from $rvm_src_path" \
         \rm -rf "$rvm_src_path/$package-$version" &&
       "$rvm_scripts_path/db" "$rvm_path/config/packages" "${package}" delete
     else
       __rvm_log_command "$package/make"         "Compiling $package in $rvm_src_path/$package-$version." \
-        make "${rvm_make_flags[@]}" &&
+        __rvm_make "${rvm_make_flags[@]}" &&
       __rvm_log_command "$package/make.install" "Installing $package to ${prefix_path:-$rvm_usr_path}" \
-        make install &&
+        __rvm_make install &&
       "$rvm_scripts_path/db" "$rvm_path/config/packages" "${package}" "${version}"
     fi
   )
@@ -105,18 +171,18 @@ package_installed()
 
   [[ -f "${__search_path}/include/$1" ]] || return $?
 
-  case "$(uname)" in
+  # __rvm_detect_system() does not support CYGWIN MINGW!
+  case "${_system_type}" in
     (Darwin)  __extension="dylib" ;;
-    (CYGWIN*) __extension="dll" ;;
-    (MINGW*)  __extension="dll" ;;
-    (*)       __extension="so" ;;
+    (Windows) __extension="dll"   ;;
+    (*)       __extension="so"    ;;
   esac
-  __lib_file=$( \find "${__search_path}" -name "$2.${__extension}" | head -n 1 )
+  __lib_file=$( __rvm_find "${__search_path}" -name "$2.${__extension}" | head -n 1 )
 
   [[ -n "${__lib_file}" ]] || return $?
 
-  case "$(uname)" in
-    (Darwin) lipo -info "${__lib_file}" | \grep "$(uname -m)" >/dev/null || return $? ;;
+  case "${_system_type}" in
+    (Darwin) lipo -info "${__lib_file}" | __rvm_grep "${_system_arch}" >/dev/null || return $? ;;
   esac
 }
 
@@ -159,21 +225,21 @@ install_openssl()
   openssl_use_asm=( "no-asm" )
   __rvm_db "${package}_version" "version"
   if
-    [[ "Darwin" == "$(uname)" ]]
+    [[ "Darwin" == "${_system_type}" ]]
   then
     configure=( "./Configure" )
     if
-      [[ -n "$rvm_architectures" ]]
+      (( ${#rvm_architectures[@]} > 0 ))
     then
-      if __rvm_string_match "$rvm_architectures" "64"
+      if __rvm_string_match "${rvm_architectures[*]}" "64"
       then hw_cpu64bit=1
       fi
-      if __rvm_string_match "$rvm_architectures" "ppc"
+      if __rvm_string_match "${rvm_architectures[*]}" "ppc"
       then hw_machine="Power Macintosh"
       fi
     else
-      hw_machine=$(sysctl hw.machine | awk -F: '{print $2}' | sed 's/^ //')
-      hw_cpu64bit=$(sysctl hw.cpu64bit_capable | awk '{print $2}')
+      hw_machine=$(sysctl hw.machine | __rvm_awk -F: '{print $2}' | __rvm_sed 's/^ //')
+      hw_cpu64bit=$(sysctl hw.cpu64bit_capable | __rvm_awk '{print $2}')
     fi
     if
       [[ "Power Macintosh" == "$hw_machine" ]]
@@ -257,10 +323,10 @@ install_libxml2()
 {
   package="libxml2" ; version="2.7.3" ; archive_format="tar.gz"
   if
-    [[ "Darwin" == "$(uname)" ]]
+    [[ "Darwin" == "${_system_type}" ]]
   then
     configure=(
-      ./configure --build=i686-apple-darwin$(uname -r) --host=i686-apple-darwin$(uname -r)
+      ./configure --build=i686-apple-darwin$(command uname -r) --host=i686-apple-darwin$(command uname -r)
     )
   fi
   install_package
@@ -271,10 +337,19 @@ install_libxslt()
 {
   package="libxslt" ; version="1.1.26" ; archive_format="tar.gz"
   configure_flags=( --with-libxml-prefix="$rvm_usr_path" )
+  if
+    [[ "SunOS" == "${_system_type}" ]]
+  then
+    patches="$rvm_patches_path/$package-$version/solaris.patch"
+  fi
   install_package
   unset prefix_path
 }
 
+install_yaml()
+{
+  install_libyaml "$@"
+}
 
 install_libyaml()
 {
@@ -320,8 +395,8 @@ install_llvm()
       svn co -r "$version" "$package_url" llvm
       __rvm_cd "$rvm_src_path/llvm"
       ./configure --enable-bindings=none
-      UNIVERSAL=1 UNIVERSAL_ARCH="i386 x86_64" ENABLE_OPTIMIZED=1 make -j2
-      sudo env UNIVERSAL=1 UNIVERSAL_ARCH="i386 x86_64" ENABLE_OPTIMIZED=1 make install
+      UNIVERSAL=1 UNIVERSAL_ARCH="i386 x86_64" ENABLE_OPTIMIZED=1 __rvm_make -j2
+      __rvm_try_sudo env UNIVERSAL=1 UNIVERSAL_ARCH="i386 x86_64" ENABLE_OPTIMIZED=1 __rvm_make install
     fi
   )
 }
@@ -329,7 +404,7 @@ install_llvm()
 install_epel()
 {
   mv="${_system_version%%.*}"
-  if [[ "${_system_name}" == "centos" ]] && [[ -f /etc/yum.repos.d/epel.repo ]] ; then
+  if [[ "${_system_name}" == "CentOS" ]] && [[ -f /etc/yum.repos.d/epel.repo ]] ; then
     __rvm_db "epel${mv}_key" "epel_key"
     __rvm_db "epel${mv}_rpm" "epel_rpm"
     "${rvm_scripts_path}/fetch" "${epel_key}"

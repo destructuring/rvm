@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-sys=$( uname -s )
+# __rvm_detect_system() does not support AIX
+sys=$( command uname -s )
 if [[ "${sys}" == AIX ]]
 then name_opt=-name
 else name_opt=-iname
@@ -14,6 +15,7 @@ source "$rvm_scripts_path/functions/build"
 source "$rvm_scripts_path/functions/pkg"
 source "$rvm_scripts_path/functions/irbrc"
 source "$rvm_scripts_path/functions/db"
+source "$rvm_scripts_path/functions/rubygems"
 source "$rvm_scripts_path/functions/manage/base"
 
 if [[ -n "${RUBYOPT:-""}" ]]

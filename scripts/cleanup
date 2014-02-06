@@ -49,7 +49,7 @@ cleanup_gemsets()
   typeset -a all_gemsets
 
   all_gemsets=()
-  __rvm_read_lines all_gemsets < <( ls -1d "${rvm_path}"/gems/* )
+  __rvm_read_lines all_gemsets <( ls -1d "${rvm_path}"/gems/* )
 
   rvm_debug "${#all_gemsets[@]}:${all_gemsets[*]}:"
   for current_path in "${all_gemsets[@]}"
@@ -79,7 +79,7 @@ cleanup_links()
   typeset -a all_links
 
   __rvm_read_lines all_links <(
-    \find "${rvm_path}"/{environments,wrappers,gems,bin} -type l
+    __rvm_find "${rvm_path}"/{environments,wrappers,gems,bin} -type l
   )
   for current_link in "${all_links[@]}"
   do

@@ -6,7 +6,7 @@ topaz_install()
 
   if [[ "${rvm_token}" != "head" ]]
   then
-    case "$(uname -sm)" in
+    case "${_system_type} ${_system_arch}" in
       "Linux x86_64")
         version="linux64"
         ;;
@@ -20,7 +20,7 @@ topaz_install()
         rvm_error "Topaz only provides binary packages for Linux i386 and x86_64 and Darwin x86_64. You try to build the HEAD version"
         ;;
     esac
-    rvm_ruby_package_file="$(__rvm_curl "${rvm_ruby_url}" | \grep -Eo "topaz-${version}-[^.]+\.tar\.bz2" | head -1)"
+    rvm_ruby_package_file="$(__rvm_curl "${rvm_ruby_url}" | __rvm_grep -Eo "topaz-${version}-[^.]+\.tar\.bz2" | head -1)"
     rvm_ruby_url="${rvm_ruby_url}/${rvm_ruby_package_file}"
 
     __rvm_cd "${rvm_archives_path}"
@@ -70,7 +70,7 @@ topaz_install()
 
   __rvm_rm_rf $rvm_ruby_home
   __rvm_run "install" \
-    "/bin/cp -Rf ${rvm_src_path}/${rvm_ruby_string} ${rvm_ruby_home}" \
+    "__rvm_cp -Rf ${rvm_src_path}/${rvm_ruby_string} ${rvm_ruby_home}" \
     "Installing topaz to $rvm_ruby_home"
 
   __rvm_cd "$rvm_ruby_home/bin/"
@@ -80,4 +80,6 @@ topaz_install()
   __rvm_generate_wrappers
 
   rvm_create_flag=1 __rvm_use
+
+  __rvm_fetch_ruby_cleanup
 }

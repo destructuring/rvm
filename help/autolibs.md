@@ -31,7 +31,7 @@ Some people might get confused at the difference between `--autolibs` and `autol
 
 ## Modes explained
 
-The default mode is `enabled`, bellow is explanation of the modes,
+The default mode is `enabled`, below is explanation of the modes,
 where most useful will be `read-fail` in case user has no `sudo` access.
 
 ## Letting RVM take care of it all (4)
@@ -45,7 +45,7 @@ Enabling 4:
 
 Most of the systems ships with a package manager so the `enable` mode is the same as `packages`.
 Unfortunately on OSX there is not package manger provided so RVM has to detect one of existing user efforts,
-The detection is in order: `macports`, `homebrew`, `smf`, `fink` if none of them is available then RVM will install `macports`.
+The detection is in order: `homebrew`, `macports`, `smf`, `fink` if none of them is available then RVM will install `macports`.
 
 You can also optionally enforce a package manager by using one of the following instead of `enable`:
 

@@ -21,10 +21,10 @@ array_push()
 
 timestamp()
 {
-  if [[ "Darwin" == "$(uname)" ]] ; then
-    echo $(stat -f "%m" $1)
+  if [[ "Darwin" == "${_system_type}" ]] ; then
+    echo $(__rvm_stat -f "%m" $1)
   else
-    echo $(stat -c "%Y" $1)
+    echo $(__rvm_stat -c "%Y" $1)
   fi
 }
 
@@ -83,7 +83,7 @@ while : ; do
           "$rvm_scripts_path/set" $rvm_action $rvm_ruby_args
         elif [[ "test" == "$framework" ]] ; then
           rvm_action="ruby"
-          rvm_ruby_args=" -r$(echo "${changed_test_files[*]}" | sed 's/ / -r/g') test/test_helper.rb"
+          rvm_ruby_args=" -r$(echo "${changed_test_files[*]}" | __rvm_sed 's/ / -r/g') test/test_helper.rb"
           "$rvm_scripts_path/set" $rvm_action $rvm_ruby_args
         fi
         update=1

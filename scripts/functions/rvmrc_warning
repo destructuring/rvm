@@ -24,14 +24,6 @@ __rvmrc_warning()
   esac
 }
 
-__rvmrc_warning_help()
-{
-  rvm_log "Manage warning for .rvmrc files, usage:
-
-    rvm rvmrc warning [check|check_quiet|help|ignore|list|reset] [<path>|all.rvmrcs|allGemfiles]
-"
-}
-
 __rvmrc_full_path_to_file()
 {
   if
@@ -50,7 +42,7 @@ __rvmrc_full_path_to_file()
     # read full path and append Gemfile
     __rvmrc_warning_file="$( __rvm_cd "$1" >/dev/null 2>&1; pwd )/Gemfile"
   elif
-    [[ -f "$1" || "$1" =~ "*.rvmrc" || "$1" =~ "*Gemfile" ]]
+    [[ -f "$1" || "$1" == *".rvmrc" || "$1" == *"Gemfile" ]]
   then
     # read dir from file name
     __rvmrc_warning_file="$( dirname "$1" )"
@@ -85,24 +77,19 @@ __rvmrc_warning_check()
 
 __rvmrc_warning_check_quiet()
 {
+  [[ -f "$__rvmrc_warning_path" ]] || return $?
   typeset __rvmrc_type
   case "$1" in
-    (all.rvmrcs|allGemfiles)
-      # convert to single file match
-      __rvmrc_type="${1#all}"
-      __rvmrc_type="/${__rvmrc_type%s}"
-      ;;
+    (all.rvmrcs|allGemfiles) true ;;
     (*)
       # convert to all<file>s
       __rvmrc_type="^all${1##*/}s"
+      if __rvm_grep "${__rvmrc_type}$" "$__rvmrc_warning_path" >/dev/null
+      then return 0
+      fi
       ;;
   esac
-  [[ -f "$__rvmrc_warning_path" ]] &&
-  {
-    grep "^$1$"             "$__rvmrc_warning_path" >/dev/null ||
-    grep "${__rvmrc_type}$" "$__rvmrc_warning_path" >/dev/null
-  } ||
-  return $?
+  __rvm_grep "^$1$" "$__rvmrc_warning_path" >/dev/null || return $?
 }
 
 __rvmrc_warning_ignore()
@@ -154,7 +141,7 @@ __rvmrc_warning_display_for_rvmrc()
   then
     rvm_warn "You are using '.rvmrc', it requires trusting, it is slower and it is not compatible with other ruby managers,
 you can switch to '.ruby-version' using 'rvm rvmrc to [.]ruby-version'
-or ignore this warnings with 'rvm rvmrc warning ignore $1',
+or ignore this warning with 'rvm rvmrc warning ignore $1',
 '.rvmrc' will continue to be the default project file in RVM 1 and RVM 2,
 to ignore the warning for all files run 'rvm rvmrc warning ignore all.rvmrcs'.
 " >&2

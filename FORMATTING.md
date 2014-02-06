@@ -4,7 +4,7 @@
 turn your eyes away from code and look on it again,
 can you really fast understand it - if no - reformat to make it better.
 
-1. Avoid semicolons, just because they make code harder to read (look rule 1).
+2. Avoid semicolons, just because they make code harder to read (look rule 1).
 
 # variables
 
@@ -30,7 +30,7 @@ Variables defined in one local in function are available in all other functions 
 ```bash
 [[ -n "${var:-}" ]]       # var is set
 [[ "${var:-}" == "bla" ]] # var equals bla
-[[ -n "${var1:-}" &&      # multi line check, first check has to be after [[ - for ZSH
+[[ -n "${var1:-}" &&      # multi line check, first check has to be after [[ - for Zsh
   -n "${var2:-}" &&
   -n "${var3:-}"
 ]]

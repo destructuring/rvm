@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 
-if ! typeset -f rvm_pretty_print >/dev/null 2>&1
-then source "${rvm_scripts_path:-"$rvm_path/scripts"}/functions/logging"
+: rvm_scripts_path:${rvm_scripts_path:="$rvm_path/scripts"}
+: rvm_user_path:${rvm_user_path:="$rvm_path/user"}
+
+source "$rvm_scripts_path/initialize"
+source "$rvm_scripts_path/functions/db"
+source "$rvm_scripts_path/functions/logging"
+source "$rvm_scripts_path/functions/support"
+source "$rvm_scripts_path/functions/utility"
+
+rvm_warn "\
+In case of problems: ${rvm_notify_clr:-}http://rvm.io/help ${rvm_warn_clr:-}and ${rvm_notify_clr:-}https://twitter.com/rvm_io"
+
+__today_s="$( date +%s 2>/dev/null )"
+if
+  [[ ${__today_s:-1384383600} -lt 1384383600 ]]
+then
+  rvm_warn "\
+       Help RVM 2.0: ${rvm_notify_clr:-}https://www.bountysource.com/fundraisers/489-rvm-2-0"
 fi
+unset __today_s
 
 if [[ "$1" == "initial" ]]
 then
@@ -36,7 +53,8 @@ then
       diff - "${file}" &&
       printf "  * No new notes to display.\n" >&2 ||
       true
-    ) | sed '/^[^<]/ d ; s/^< //'
+    ) | __rvm_sed '/^[^<]/ d ; s/^< //'
+    printf "\n" >&2
     \mv -f "${file}.new" "${file}"
   }
   important_message()
@@ -71,8 +89,23 @@ $notes_type Notes:
 "
 fi
 
+# duplication marker kdfkjkjfdkfjdjkdfkjfdkj
+load_custom_flags()
+{
+  if
+    [[ -s "${rvm_path:-}/user/custom_flags" ]]
+  then
+    typeset __key __value
+    while IFS== read __key __value
+    do
+      eval "export ${__key}=\"\${__value}\""
+    done < "${rvm_path:-}/user/custom_flags"
+  fi
+}
+load_custom_flags
+
 # this block groups generated and static notes,
-# to add generated msgs put them bellow in code
+# to add generated msgs put them below in code
 # for general messages put them in help/upgrade-notes.txt
 {
   if [[ -z "$1" ]]
@@ -97,7 +130,7 @@ $notes_type Notes:
   : \
     rvm_scripts_path:${rvm_scripts_path:-$rvm_path/scripts}:
 
-  \cat "$rvm_path/help/upgrade-notes.txt" | sed \
+  \cat "$rvm_path/help/upgrade-notes.txt" | __rvm_sed \
    -e "s/\${SHELL}/${SHELL//\//\/}/g" \
    -e "s/\${rvm_scripts_path}/${rvm_scripts_path//\//\/}/g"
 
@@ -106,7 +139,7 @@ $notes_type Notes:
   if
     [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
     [[ -f /etc/profile.d/rvm.sh ]] &&
-    ! GREP_OPTIONS="" \grep rvm_stored_umask /etc/profile.d/rvm.sh >/dev/null
+    ! __rvm_grep rvm_stored_umask /etc/profile.d/rvm.sh >/dev/null
   then
     important_message "
   * WARNING: your RVM loading script \`/etc/profile.d/rvm.sh\` is deprecated
@@ -125,7 +158,7 @@ $notes_type Notes:
 
     open new terminal and validate environment is clean from old rvm settings:
 
-      env | GREP_OPTIONS="" \grep rvm
+      env | __rvm_grep rvm
 
     install RVM:
 
@@ -151,24 +184,39 @@ $notes_type Notes:
 
   if
     [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
-    [[ -f ~/.profile ]] && ! [[ "$rvm_path" == "/usr/local/rvm" || $UID == 0 ]] &&
-    ! GREP_OPTIONS="" \grep 'source.*profile' ~/.bash_profile >/dev/null 2>&1 &&
-    ! GREP_OPTIONS="" \grep 'source.*profile' ~/.bash_login >/dev/null 2>&1
+    [[ -f "$HOME/.profile" ]] && ! [[ "$rvm_path" == "/usr/local/rvm" || $UID == 0 ]]
   then
-    important_message "
-  * WARNING: You're using ~/.profile, make sure you load it,
-    add the following line to ~/.bash_profile if it exists
-    otherwise add it to ~/.bash_login:
+    for __var in "$HOME/.bash_profile" "$HOME/.bash_login"
+    do
+      if
+        [[ -f "${__var}" ]]
+      then
+        __rvm_grep 'source.*profile' "${__var}" >/dev/null 2>&1 ||
+        {
+          important_message "
+  * WARNING: You have '~/.profile' file, you might want to load it,
+    to do that add the following line to '${__var}':
 
       source ~/.profile
 "
+        }
+        break
+      fi
+    done
   fi
 
-  if [[ -n "${ZSH_VERSION:-}" ]] &&
-    (( 65536 * ${ZSH_VERSION:0:1} + 256 * ${ZSH_VERSION:2:1} + ${ZSH_VERSION:4} != 262924 ))
+  typeset __user_shell __zsh_version
+  if
+    __user_shell="$(__rvm_get_user_shell)" &&
+    [[ -n "${__user_shell:-}" ]] &&
+    __zsh_version="$(${__user_shell} -c 'echo $ZSH_VERSION' 2>/dev/null)" &&
+    [[ -n "${__zsh_version:-}" ]] &&
+    __rvm_version_compare "${__zsh_version}" -ne 4.3.12 &&
+    __rvm_version_compare "${__zsh_version}" -lt 5.0.0
   then
     important_message "
-  * WARNING: ZSH 4.3.12 is recommended, you have $ZSH_VERSION.
+  * WARNING: ${__user_shell} version ${__zsh_version} detected - Zsh 4.3.12 / 5.0.0+ is recommended,
+    with current one errors to be expected - bugs in shell code interpretation.
 "
   fi
 
@@ -183,8 +231,8 @@ $notes_type Notes:
   if
     [[ ${rvm_ignore_dotfiles_flag:-0} == 0 ]] &&
     (( ${#__files[@]} )) &&
-    GREP_OPTIONS="" \grep -rn '^[^#]*PATH=' "${__files[@]}" |
-      GREP_OPTIONS="" \grep -vE '[[:alnum:]_]PATH=|PATH=.*PATH'
+    __rvm_grep -rn '^[^#]*PATH=' "${__files[@]}" |
+      __rvm_grep -vE '[[:alnum:]_]PATH=|PATH=.*PATH'
   then
     # account for grep not showing file name for just one file checked
     if (( ${#__files[*]} == 1 ))
@@ -209,7 +257,7 @@ $notes_type Notes:
 
   if
     [[ -f /etc/rvmrc && -s /etc/rvmrc ]] &&
-    GREP_OPTIONS="" \grep 'rvm_configure_env=.*/opt/sm' /etc/rvmrc >/dev/null 2>&1
+    __rvm_grep 'rvm_configure_env=.*/opt/sm' /etc/rvmrc >/dev/null 2>&1
   then
     important_message "
   * WARNING: you have 'rvm_configure_env' in /etc/rvmrc, run the following to fix:
@@ -232,7 +280,7 @@ $notes_type Notes:
         for _check in " -n" --user-install gemhome gempath
         do
           if
-            GREP_OPTIONS="" \grep -E -- '^'"${_check}"'|^[^#]*'"${_check}" "${_gemrc}" >/dev/null
+            __rvm_grep -E -- '^'"${_check}"'|^[^#]*'"${_check}" "${_gemrc}" >/dev/null
           then
             (( _found++ ))
             important_message "  * WARNING: Found ${_check} in ${_gemrc}, please remove it, as it will break rubygems in RVM."
@@ -258,14 +306,3 @@ $notes_type Notes:
 "
   fi
 } | new_notes | eval "${PAGER:-\cat}"
-
-rvm_warn "
-# RVM:  Shell scripts enabling management of multiple ruby environments.
-# RTFM: https://rvm.io/
-# HELP: http://webchat.freenode.net/?channels=rvm (#rvm on irc.freenode.net)
-# Cheatsheet: http://cheat.errtheblog.com/s/rvm
-# Screencast: http://screencasts.org/episodes/how-to-use-rvm
-"
-
-rvm_log "# In case of any issues run 'rvm requirements' or read 'rvm notes'
-"

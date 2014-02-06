@@ -79,11 +79,11 @@ rvm_pretty_print()
         (dumb|unknown) return 1 ;;
       esac
       case "$1" in
-        (stdout)      [[ -t 1           ]] || return 1 ;;
-        (stderr)      [[ -t 2           ]] || return 1 ;;
-        ([[:digit:]]) [[ -t $1          ]] || return 1 ;;
-        (any)         [[ -t 1  || -t 2  ]] || return 1 ;;
-        (*)           [[ -t 1  && -t 2  ]] || return 1 ;;
+        (stdout) [[ -t 1           ]] || return 1 ;;
+        (stderr) [[ -t 2           ]] || return 1 ;;
+        ([0-9])  [[ -t $1          ]] || return 1 ;;
+        (any)    [[ -t 1  || -t 2  ]] || return 1 ;;
+        (*)      [[ -t 1  && -t 2  ]] || return 1 ;;
       esac
       return 0
       ;;
@@ -135,8 +135,8 @@ rvm_fail()
 rvm_warn()
 {
   if rvm_pretty_print stdout
-  then printf "%b" "${rvm_warn_clr:-}$*${rvm_reset_clr:-}\n"
-  else printf "%b" "$*\n"
+  then printf "%b" "${rvm_warn_clr:-}$*${rvm_reset_clr:-}\n" >&2
+  else printf "%b" "$*\n" >&2
   fi
 }
 rvm_debug()
@@ -149,11 +149,12 @@ rvm_debug()
 }
 rvm_debug_stream()
 {
-  (( ${rvm_debug_flag:-0} || ${rvm_trace_flag:-0} )) || return 0
-  if rvm_pretty_print stdout
-  then \cat - | awk '{print "'"${rvm_debug_clr:-}"'"$0"'"${rvm_reset_clr:-}"'"}'
-  else \cat -
-  fi >&2
+  if (( ${rvm_debug_flag:-0} == 0 && ${rvm_trace_flag:-0} == 0 ))
+  then cat - >/dev/null # suppress output when not debugging/tracing
+  elif rvm_pretty_print stdout
+  then \cat - | __rvm_awk '{print "'"${rvm_debug_clr:-}"'"$0"'"${rvm_reset_clr:-}"'"}' >&2
+  else \cat - >&2
+  fi
 }
 rvm_log()
 {

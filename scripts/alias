@@ -61,7 +61,7 @@ alias_after_delete_default()
     [[ -f "$_path" ]] && \rm -rf ${_path}
   done
 
-  for wrapper in "$rvm_path"/wrappers/default/* gem irb erb ri rdoc testrb rake ruby
+  for wrapper in "$rvm_path"/wrappers/default/* gem irb erb ri rdoc testrb rake ruby bundle
   do
     wrapper="${wrapper##*\/}"
     \rm -f "$rvm_bin_path/${wrapper}"
@@ -82,12 +82,12 @@ alias_delete() {
     [[ -L "$_path/$alias_name" ]] && \rm -f "$_path/$alias_name"
   done
 
-  [[ -s "$rvm_path/config/alias" ]] || return 0
+  touch "$rvm_path/config/alias"
 
   "$rvm_scripts_path"/db "$rvm_path/config/alias" "$alias_name" "delete"
 
-  if [[ "default" == "$alias_name" ]] ; then
-    alias_after_delete_default
+  if [[ "$alias_name" == "default" ]]
+  then alias_after_delete_default
   fi
 }
 
@@ -105,7 +105,7 @@ alias_after_create_default()
     "$rvm_scripts_path/wrapper" "$rvm_ruby_string" "default"
   fi
 
-  RUBY_VERSION="$("$rvm_ruby_home/bin/ruby" -v | \sed 's#^\(.*\) (.*$#\1#')"
+  RUBY_VERSION="$("$rvm_ruby_home/bin/ruby" -v | __rvm_sed 's#^\(.*\) (.*$#\1#')"
 
   export GEM_HOME GEM_PATH MY_RUBY_HOME RUBY_VERSION
 
@@ -119,13 +119,13 @@ alias_after_create_default()
       \rm -f "$rvm_bin_path/${wrapper##*\/}"
     fi
 
-    \cp -f "$wrapper" "$rvm_bin_path/${wrapper##*\/}"
+    __rvm_cp -f "$wrapper" "$rvm_bin_path/${wrapper##*\/}"
 
     # If the RVM bin path is different from rvm_path/bin, ensure they are
     # in sync.
     if [[ "${rvm_bin_path}" != "${rvm_path}/bin" ]]
     then
-      \cp -f "${wrapper}" "${rvm_path}/bin/"
+      __rvm_cp -f "${wrapper}" "${rvm_path}/bin/"
     fi
   done
 }
@@ -143,20 +143,18 @@ alias_create()
   then
     rvm_error "usage: 'rvm alias [alias_name] [ruby_string]'"
     return 1
-
   elif
     [[ ! -L "$rvm_rubies_path/$alias_name" && -d "$rvm_rubies_path/$alias_name" ]]
   then
     rvm_error "$alias_name is a full ruby name and can not be used as alias name."
     return 2
-
   else
     final_environment_identifier="${rvm_ruby_string:-$(__rvm_env_string)}"
 
     rvm_log "Creating alias $alias_name for $final_environment_identifier."
     for _path in "$rvm_rubies_path" "$rvm_environments_path" "$rvm_wrappers_path"
     do
-      [[ -L "$_path/default" ]] && \rm -f "$_path/$alias_name"
+      [[ -L "$_path/$alias_name" ]] && \rm -f "$_path/$alias_name"
       \ln -fs "$_path/$rvm_ruby_string" "$_path/$alias_name"
     done
 
@@ -167,30 +165,33 @@ alias_create()
   fi
 }
 
+alias_list_show()
+{
+  __rvm_cd "$rvm_rubies_path"
+  __rvm_find . -maxdepth 1 -mindepth 1 -type l | __rvm_sed -e 's#.*/##'
+}
+
 alias_list() {
-  typeset item
   case "${alias_name}" in
     (names)
-      \cat - # just show it
+      alias_list_show # just show it
       ;;
     (*)
-      while
-        read item
-      do
-        echo "$item => $("$rvm_scripts_path"/db "$rvm_path/config/alias" "$item")"
+      typeset -a items
+      __rvm_read_lines items <(alias_list_show)
+      typeset item
+      for item in "${items[@]}"
+      do echo "$item => $("$rvm_scripts_path"/db "$rvm_path/config/alias" "$item")"
       done
       ;;
-  esac < <(
-    __rvm_cd "$rvm_rubies_path"
-    \find . -maxdepth 1 -mindepth 1 -type l | sed -e 's#.*/##'
-  )
+  esac
 }
 
 alias_search_by_target() {
   typeset item items target search
   search="${alias_name}@${gemset_name}"
 
-  items=($(__rvm_cd "$rvm_rubies_path" ; \find . -maxdepth 1 -mindepth 1 -type l | sed -e 's#./##'))
+  items=($(__rvm_cd "$rvm_rubies_path" ; __rvm_find . -maxdepth 1 -mindepth 1 -type l | __rvm_sed -e 's#./##'))
 
   for item in "${items[@]}"
   do
@@ -209,9 +210,18 @@ rvm_environment_identifier="${args[2]:-""}"
 args="$(echo ${args[@]:3})" # Strip trailing / leading / extra spacing.
 result=0
 
+if
+  [[ "$alias_name" == *"/"* ]]
+then
+  printf "%b" "Can not use path separator '/' in alias names."
+  exit 1
+fi
+
 [[ -f "$rvm_path/config/alias" ]] || touch "$rvm_path/config/alias"
 
-if printf "%b" "$alias_name" | GREP_OPTIONS="" \grep "${rvm_gemset_separator:-"@"}" >/dev/null 2>&1 ; then
+if
+  [[ "$alias_name" == *"${rvm_gemset_separator:-"@"}"* ]]
+then
   gemset_name="${alias_name/*${rvm_gemset_separator:-"@"}/}"
   alias_name="${alias_name/${rvm_gemset_separator:-"@"}*/}"
 else

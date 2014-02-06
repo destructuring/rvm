@@ -59,7 +59,7 @@ requirements_osx_update_openssl_cert_run()
 
 requirements_osx_update_openssl_cert()
 {
-  [[ "Darwin" == "$(uname)" ]] || return 0
+  [[ "Darwin" == "${_system_type}" ]] || return 0
 
   case "${rvm_autolibs_flag_number}" in
     (0)
@@ -69,7 +69,7 @@ requirements_osx_update_openssl_cert()
   esac
 
   typeset ssl_binary ssl_dir cert_file
-  ssl_binary="${1:-$(which openssl)}"
+  ssl_binary="${1:-$(__rvm_which openssl)}"
   cert_file="$( __rvm_osx_ssl_certs_file_from_openssl "${ssl_binary}" )"
   ssl_dir="${cert_file%/*}"
 
@@ -88,7 +88,7 @@ requirements_osx_update_openssl_cert()
 __rvm_osx_ssl_certs_update_for_path()
 {
   typeset ssl_dir cert_file
-  cert_file="$( __rvm_osx_ssl_certs_file_for_ruby )"
+  cert_file="${1:-$( __rvm_osx_ssl_certs_file_for_ruby )}"
   ssl_dir="${cert_file%/*}"
 
   if (( ${rvm_silent_flag:-0} == 0 ))
@@ -136,19 +136,38 @@ __rvm_osx_ssl_certs_file_for_ruby()
   "${1:-ruby}" -ropenssl -e 'puts OpenSSL::X509::DEFAULT_CERT_FILE'
 }
 
+__rvm_osx_ssl_certs_ensure_for_ruby()
+{
+  [[ "${_system_name}" == "OSX" ]] || return 0
+
+  typeset ssl_dir cert_file
+  cert_file="$( __rvm_osx_ssl_certs_file_for_ruby "$1" )"
+  ssl_dir="${cert_file%/*}"
+  if
+    requirements_osx_update_openssl_cert_old
+  then
+    rvm_requiremnts_fail_or_run_action 2 \
+      "Skipping update of certificates in '$cert_file'." \
+      requirements_osx_update_openssl_cert_run ||
+      true # Ignore failure - ruby is already installed
+  fi
+  true # for osx
+}
+
+
 __rvm_osx_ssl_certs_file_from_openssl()
 {
-  "${1:-openssl}" version -d | awk -F'"' '{print $2"/cert.pem"}'
+  "${1:-openssl}" version -d | __rvm_awk -F'"' '{print $2"/cert.pem"}'
 }
 
 __rvm_cron_find()
 {
-  EDITOR=\cat crontab -e 2>/dev/null | GREP_OPTIONS="" \grep "$1" >/dev/null || return $?
+  EDITOR=\cat crontab -e 2>/dev/null | __rvm_grep "$1" >/dev/null || return $?
 }
 
 __rvm_cron_uninstall()
 {
-  EDITOR=\cat crontab -e 2>/dev/null | GREP_OPTIONS="" \grep -v "$1" | crontab -
+  EDITOR=\cat crontab -e 2>/dev/null | __rvm_grep -v "$1" | crontab -
 }
 
 __rvm_cron_install()

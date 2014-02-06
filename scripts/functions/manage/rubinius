@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source "$rvm_scripts_path/functions/osx-ssl-certs"
+
 make_sure_its_enough_ram_for_rbx()
 {
   typeset rvm_rbx_required_ram
@@ -7,129 +9,79 @@ make_sure_its_enough_ram_for_rbx()
 
   __rvm_compiler_is_llvm ||
   __rvm_is_enough_ram ${rvm_rbx_required_ram_mb} ||
+  rvm_error "For rbx (Rubinius) more than ${rvm_rbx_required_ram_mb}MB of free RAM might be required."
+}
+
+rubinius_install_detect_required_ruby()
+{
+  export ruby
+  case "${rvm_ruby_version}" in
+    (2.0.0)
+      case "${rvm_ruby_patch_level}" in
+        (rc1) ruby="ruby-1.9" ;;
+        (*)   ruby="ruby-2.0" ;;
+      esac
+      ;;
+    (head)
+      case "$rvm_ruby_repo_branch" in
+        (1.8.7|1.9.3) ruby="ruby-1.9|ruby-2.0" ;;
+        (*)           ruby="ruby-2.0"          ;;
+      esac
+      ;;
+    (*)
+      ruby="ruby-2.0"
+      ;;
+  esac
+  __rvm_ensure_has_mri_ruby "$ruby" ||
   {
-    if
-      (( ${rvm_force_flag:-0} == 0 ))
-    then
-      rvm_error "
-For rbx (Rubinius) more than ${rvm_rbx_required_ram_mb}MB of free RAM required.
-Use \`--force\` to compile rbx anyway.
-"
-      return 1
-    else
-      rvm_warn "Forced build with less than ${rvm_rbx_required_ram_mb}MB of free RAM."
+    rvm_log "No $ruby found, cannot build rbx."
+    return 1
+  }
+  ruby="$(__rvm_mri_ruby "$ruby")"
+}
+
+rubinius_install_ensure_wrapper()
+{
+  typeset __binary=$1
+  shift
+  [[ -x "$rvm_wrappers_path/$ruby/${__binary}" ]] ||
+  {
+    if (( $# ))
+    then __rvm_log_command "install_${__binary}" "$rvm_ruby_string - #install ${__binary}" "$@" || return $?
     fi
+    "${rvm_scripts_path:-${rvm_path}/scripts}"/wrapper "$ruby" --no-links ${__binary} || return $?
   }
 }
 
 rubinius_install()
 {
+  rubinius_install_detect_required_ruby || return $?
+
+  make_sure_its_enough_ram_for_rbx
+
   typeset rvm_configure_args
   typeset -a rvm_ruby_configure
   unset CFLAGS LDFLAGS ARCHFLAGS # Important.
   unset GEM_HOME GEM_PATH MY_RUBY_HOME IRBRC RBXOPT
   export PATH
-
-  make_sure_its_enough_ram_for_rbx || return $?
-
-  rvm_log "$rvm_ruby_string installing #dependencies "
-  __rvm_ensure_has_mri_ruby "ruby-1.9|ruby-2" ||
-  {
-    rvm_log "No MRI 1.9/2.0 ruby found, cannot build rbx."
-    return 1
-  }
-  export ruby="$(__rvm_mri_ruby "ruby-1.9|ruby-2")"
-  rvm_debug "Using $ruby for RBX installation"
+  rvm_ruby_make=""
 
   __rvm_setup_compile_environment "${rvm_ruby_string}" || return $?
   __rvm_remove_rvm_from_path
   __rvm_conditionally_add_bin_path
-  __rvm_compatibility_flag_configuration --enable-version=
 
-  if
-    {
-      [[ -n "${rvm_ruby_package_file:-}" &&
-         -f "${rvm_archives_path}/${rvm_ruby_package_file}" &&
-         -s "${rvm_archives_path}/${rvm_ruby_package_file}" ]]
-    } ||
-    {
-      [[ -n "${rvm_ruby_url:-}" ]] &&
-      file_exists_at_url "${rvm_ruby_url}"
-    }
-  then
-    rvm_head_flag=0
-  else
-    rvm_head_flag=1
-    if [[ "${rvm_ruby_version}" == 'head' ]]
-    then
-      true ${rvm_ruby_repo_branch:="master"}
-    else
-      true ${rvm_ruby_repo_branch:="${rvm_ruby_version}"}
-    fi
-  fi
-
-  if (( rvm_head_flag == 0 ))
-  then
-    # Install from tarball url.
-    rvm_log "$rvm_ruby_string #downloading ($rvm_ruby_package_file), this may take a while depending on your connection..."
-
-    "$rvm_scripts_path/fetch" "$rvm_ruby_url"
-    result=$?
-
-    if (( result > 0 ))
-    then
-      rvm_error "There has been an error while trying to fetch the source. Halting the installation."
-      return $result
-    fi
-
-    __rvm_log_command "extract" "$rvm_ruby_string - #extracting $rvm_ruby_package_file to ${rvm_src_path}/$rvm_ruby_string" \
-      __rvm_package_extract "${rvm_archives_path}/$rvm_ruby_package_file" "${rvm_tmp_path:-/tmp}/rvm_src_$$" ||
-    case $? in
-      199)
-        rvm_error "\nUnrecognized archive format '$archive_format'"
-        return 199
-        ;;
-      *)
-        rvm_error "There has been an error while trying to extract the source. Halting the installation."
-        return 1
-        ;;
-    esac
-
-    # Remove the left over folder first.
-    __rvm_rm_rf "${rvm_src_path}/$rvm_ruby_string"
-
-    if [[ -n "${rvm_ruby_patch_level:-}" ]]
-    then
-      \mv "${rvm_tmp_path:-/tmp}/rvm_src_$$/rubinius-release-${rvm_ruby_version}-${rvm_ruby_patch_level}" "${rvm_src_path}/$rvm_ruby_string"
-    else
-      \mv "${rvm_src_path}/rubinius-${rvm_ruby_version}" "${rvm_src_path}/$rvm_ruby_string"
-    fi
-  else
-    # Install from repository
-    __rvm_db "rubinius_repo_url" "rvm_ruby_repo_url"
-    #rvm_ruby_home="$rvm_rubies_path/$rvm_ruby_interpreter-$rvm_ruby_version"
-    __rvm_fetch_from_github "rbx"
-    result=$?
-
-    if (( result > 0 ))
-    then
-      rvm_error "There has been an error while fetching the rbx git repo.  \nHalting the installation."
-      return $result
-    fi
-  fi
+  __rvm_fetch_ruby || return $?
 
   __rvm_cd "${rvm_src_path}/$rvm_ruby_string"
 
   chmod +x ./configure
 
-  __rvm_apply_patches
-  result=$?
-
-  if (( result > 0 ))
-  then
+  __rvm_apply_patches ||
+  {
+    result=$?
     rvm_error "There has been an error while trying to apply patches to rubinius.  \nHalting the installation."
     return $result
-  fi
+  }
   (( ${#rvm_configure_flags[@]} )) || rvm_configure_flags=( --skip-system )
   rvm_configure_flags=( --prefix="$rvm_ruby_home"  "${rvm_configure_flags[@]}" )
 
@@ -142,22 +94,46 @@ rubinius_install()
   # Explicitly disabled
   (( ${rvm_llvm_flag:=1} )) || rvm_configure_flags+=( --disable-llvm )
 
+  if
+    [[ -f "Gemfile" && ${rvm_ignore_gemsets_flag:-0} -eq 0 ]]
+  then
+    ruby="${ruby}@rubinius"
+    (
+      rvm_create_flag=1
+      rvm_verbose_flag=0
+      __rvm_select "$ruby"
+    )
+  fi
+  rvm_log "Using $ruby for $rvm_ruby_string installation"
+  rubinius_install_ensure_wrapper ruby
+  __rvm_osx_ssl_certs_ensure_for_ruby "$rvm_wrappers_path/$ruby/ruby"
+  rubinius_install_ensure_wrapper gem
+  rubinius_install_ensure_wrapper rake "$rvm_wrappers_path/$ruby/gem" install rake
+  if
+    [[ -f "Gemfile" ]]
+  then
+    rubinius_install_ensure_wrapper bundle "$rvm_wrappers_path/$ruby/gem" install bundle
+    __rvm_log_command "bundle" "$rvm_ruby_string - #bundle install" \
+      "${rvm_ruby_make:-}$rvm_wrappers_path/$ruby/bundle" install ||
+      return $?
+  fi
+  if
+    [[ -f "$HOME/.gem/credentials" && -w "$HOME/.gem/credentials" ]]
+  then
+    chmod 600 "$HOME/.gem/credentials"
+  fi
   __rvm_log_command "configure" "$rvm_ruby_string - #configuring" \
     env "${rvm_configure_env[@]}" $rvm_wrappers_path/$ruby/ruby ./configure "${rvm_configure_flags[@]}" ||
-  {
-    result=$?
-    rvm_error "There has been an error while running 'configure'.  \nHalting the installation."
-    return $result
-  }
+    return $?
 
   if [[ -n "${rvm_configure_args:-}" ]]
-  then
-    rvm_ruby_make="CONFIGURE_ARGS=${rvm_configure_args## } "
+  then rvm_ruby_make="CONFIGURE_ARGS=${rvm_configure_args## } "
   fi
 
   __rvm_every_nth_dot 20 \
     __rvm_log_command rake "$rvm_ruby_string - #compiling" \
-      "${rvm_ruby_make:-}$rvm_wrappers_path/$ruby/rake" install --trace || return $?
+    "${rvm_ruby_make:-}$rvm_wrappers_path/$ruby/rake" install --trace ||
+    return $?
   [[ -d "$rvm_ruby_home" && -f "$rvm_ruby_home/bin/rbx" ]] ||
   {
     result=$?
@@ -174,6 +150,11 @@ about not returning non zero status in case of errors."
   [[ -f "$rvm_ruby_home/bin/ruby" ]] ||
     ln -fs "$rvm_ruby_home/bin/rbx" "$rvm_ruby_home/bin/ruby"
 
+  # remove the rdoc link, the gem is not builtin
+  if [[ -f "$rvm_ruby_home/bin/rdoc" ]]
+  then rm -f "$rvm_ruby_home/bin/rdoc"
+  fi
+
   case ${rvm_ruby_string} in
     rbx-head*|rubinius-head*|rbx-2.*|rubinius-2.*)
       binaries=()
@@ -188,11 +169,11 @@ about not returning non zero status in case of errors."
 
       # Install Gem Wrapper on Rubinius.
       file_name="$rvm_ruby_home/bin/gem"
-      \cp -f "$rvm_ruby_home/lib/bin/gem.rb" "$file_name"
+      __rvm_cp -f "$rvm_ruby_home/lib/bin/gem.rb" "$file_name"
       __rvm_inject_ruby_shebang "$file_name"
       [[ -x "$file_name" ]] || chmod +x "$file_name"
       unset file_name
-      binaries=(erb ri rdoc)
+      binaries=(erb ri)
       ;;
   esac
 
@@ -202,4 +183,5 @@ about not returning non zero status in case of errors."
   )
   __rvm_post_install
   __rvm_generate_wrappers
+  __rvm_fetch_ruby_cleanup
 }

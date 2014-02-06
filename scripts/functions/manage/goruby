@@ -12,28 +12,18 @@ goruby_install()
 
   rvm_ruby_home="$rvm_rubies_path/$rvm_ruby_interpreter"
 
-  __rvm_fetch_from_github "ruby" "trunk"
-  __rvm_apply_patches ; result=$?
-
-  if (( result > 0 ))
-  then
+  __rvm_fetch_ruby
+  __rvm_apply_patches ||
+  {
+    result=$?
     rvm_error "There has been an error while trying to apply patches to goruby.  \nHalting the installation."
     exit $result
-  fi
+  }
 
   #__rvm_cd "${rvm_src_path}/$rvm_ruby_string/configure"
 
-  if [[ ! -s "${rvm_src_path}/$rvm_ruby_string/configure" ]]
-  then
-    if builtin command -v autoreconf &> /dev/null
-    then
-      __rvm_run "autoreconf" "autoreconf" "Running autoreconf"
-    else
-      rvm_error "rvm expects autoreconf to install this ruby interpreter, autoreconf was not found in PATH. \
-        \nHalting installation."
-      exit $result
-    fi
-  fi
+  [[ -s "${rvm_src_path}/$rvm_ruby_string/configure" ]] ||
+    __rvm_run "autoreconf" "__rvm_autoreconf" "Running autoreconf"
 
   if [[ -s ./Makefile && -z "$rvm_reconfigure_flag" ]]
   then
@@ -70,7 +60,7 @@ goruby_install()
 
   : rvm_ruby_make:${rvm_ruby_make:=make}
 
-  __rvm_log_command "make" "Compiling $rvm_ruby_string, this may take a while depending on your cpu(s)..." \
+  __rvm_log_command "make" "Compiling $rvm_ruby_string, this may take a while depending on your cpu(s)" \
     $rvm_ruby_make golf "${rvm_make_flags[@]}"
   result=$?
 
@@ -80,7 +70,7 @@ goruby_install()
     exit $result
   fi
 
-  rvm_ruby_make_install=${rvm_ruby_make_install:-"make install"}
+  rvm_ruby_make_install=${rvm_ruby_make_install:-"__rvm_make install"}
 
   __rvm_run "install" "$rvm_ruby_make_install" "Installing $rvm_ruby_string"
   result=$?
@@ -109,4 +99,5 @@ goruby_install()
 
   \rm $rvm_ruby_home/bin/ruby
   ln -s $rvm_ruby_home/bin/goruby $rvm_ruby_home/bin/ruby
+  __rvm_fetch_ruby_cleanup
 }

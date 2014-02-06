@@ -13,8 +13,8 @@ __rvm_implode_binaries()
     done
 
     rvm_log "Removing rvm wrappers in $rvm_bin_path"
-    \find "$rvm_bin_path" -type l | while read symlinked_rvm_file; do
-      if [[ "$(readlink "$symlinked_rvm_file")" == "$rvm_wrappers_path/"* ]]; then
+    __rvm_find "$rvm_bin_path" -type l | while read symlinked_rvm_file; do
+      if [[ "$(__rvm_readlink "$symlinked_rvm_file")" == "$rvm_wrappers_path/"* ]]; then
         __rvm_rm_rf "$symlinked_rvm_file"
       fi
     done
@@ -40,9 +40,17 @@ __rvm_implode()
       rvm_log "Hai! Removing $rvm_path"
       for file in /etc/profile.d/rvm.sh $rvm_man_path/man1/rvm.1* $rvm_path/
       do
-        __rvm_rm_rf $file
+        __rvm_rm_rf $file || rvm_error "Could not remove '$file', please try removing it manually."
       done
-      rvm_log "$rvm_path has been removed."
+
+      if
+        [[ -e $rvm_path ]]
+      then
+        rvm_warn "Failed to completely remove $rvm_path -- You will have to do so manually."
+      else
+        rvm_log "$rvm_path has been removed."
+      fi
+
       if
         [[ "$rvm_path" == "/usr/local/rvm"* && -f "/usr/local/lib/rvm" ]]
       then
