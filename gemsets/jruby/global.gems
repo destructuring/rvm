@@ -1,2 +1,4 @@
 jruby-openssl
 jruby-launcher
+bundler
+rake
