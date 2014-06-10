@@ -1,17 +1,20 @@
-language: ruby
-rvm:
-  - 1.9.3
-install:
-  - gem update --system
-  - gem install bundler --pre
-  - gem install tf -v '>=0.4.1'
+language: c
+os: [linux, osx]
+osx_image: mavericks
+before_install:
+  - "head -n 100 /etc/rvmrc ~/.rvmrc || true"
+  - rvm use ruby-2.0.0 --fuzzy
+  - "[[ -n \"${LANG:-}\" ]] || export LANG=en_US.UTF-8"
+  - "env | grep '^rvm' || true"
+install: gem install tf -v '>=0.4.1'
 before_script:
   - "sudo chown -R $USER: $rvm_path"
-  - "sudo apt-get install gawk -y"
+  - "if which apt-get ; then sudo apt-get install gawk -y ; fi"
   - "echo ruby_1.8.7_rubygems_version=1.8.25 > $rvm_path/user/db"
-  - "sed -i'' -e '/rvm_silence_path_mismatch_check_flag/ d' ~/.rvmrc"
-  - unset rvm_silence_path_mismatch_check_flag
+  - "if [[ -f ~/.rvmrc ]] ; then sed -i'' -r -e '/rvm_silence_path_mismatch_check_flag|rvm_project_rvmrc/ d' ~/.rvmrc ; fi"
+  - unset rvm_silence_path_mismatch_check_flag rvm_project_rvmrc
   - rvm alias delete default
+  - rvm 1.9.3,1.9.3-p484 do rvm gemset reset_env || true
   - hash -r
   - ./install
   - rvm-smile
@@ -22,7 +25,6 @@ notifications:
   irc:
     channels:
       - "irc.freenode.org#rvm-test"
-      - "irc.freenode.org#rvm"
   email:
     recipients:
       - mpapis@gmail.com

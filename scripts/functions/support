@@ -8,18 +8,21 @@ is_a_function()
 # Functions RVM is built on
 # __rvm_string_match <value> <string|glob>
 if
- [[ -n "$ZSH_VERSION" ]]
+  [[ -n "$ZSH_VERSION" ]]
 then
   __rvm_string_match()
   {
-    typeset _string
+    typeset _string _search
     _string="$1"
     shift
     while (( $# ))
     do
+      _search="$1"
+      _search="${_search// /[[:space:]]}"
+      _search="${_search//\#/\#}"
       eval "\
       case \"\${_string}\" in\
-        ($1) return 0 ;;\
+        ($_search) return 0 ;;\
       esac\
       "
       shift
@@ -35,7 +38,7 @@ else
     while (( $# ))
     do
       case "${_string}" in
-        ($1) return 0 ;;
+        (${1// /[[:space:]]}) return 0 ;;
       esac
       shift
     done
@@ -148,7 +151,7 @@ __rvm_sed_i()
     \mv -f "${_filename}.new" "${_filename}"
   } 2>&1 | rvm_debug_stream
 
-  if [[ -n "${_executable:-}" ]]
+  if [[ -n "${_executable:-}" && ! -x "${_filename}" ]]
   then chmod +x "${_filename}"
   fi
 }
@@ -241,7 +244,10 @@ __rvm_setup_utils_functions_Other()
   then __rvm_which() { command which "$@" || return $?; }
   elif which which >/dev/null 2>&1
   then __rvm_which() { which "$@" || return $?; }
-  else rvm_fail "ERROR: Missing proper 'which' command. Make sure it is installed before using RVM!" 1
+  else
+    typeset __result=$?
+    rvm_error "ERROR: Missing proper 'which' command. Make sure it is installed before using RVM!"
+    return ${__result}
   fi
 
   for gnu_util in "${gnu_utils[@]}"
@@ -249,7 +255,7 @@ __rvm_setup_utils_functions_Other()
   done
 }
 
-__rvm_setup_utils_functions
+__rvm_setup_utils_functions || return $?
 
 if
   [[ ! " ${rvm_tar_options:-} " =~ " --no-same-owner "  ]] &&
@@ -406,10 +412,28 @@ __rvm_read_lines()
 
 __rvm_ruby_config_save()
 {
-  typeset ruby_path config_path default_config_path
+  typeset ruby_path
   ruby_path="${1:-$rvm_ruby_home/bin/ruby}"
+  case "$ruby_path" in
+    (*/mruby*)
+      __rvm_ruby_config_save_mruby "${2:-${ruby_path%%/bin/ruby}/config}"
+      ;;
+    (*)
+      __rvm_ruby_config_save_generic "$2"
+      ;;
+  esac
+}
+
+__rvm_ruby_config_save_mruby()
+{
+  echo "target_cpu=\"$_system_arch\"" > "$1"
+}
+
+__rvm_ruby_config_save_generic()
+{
+  typeset config_path default_config_path
   default_config_path="#{RbConfig::CONFIG[\"prefix\"]}/config"
-  config_path="${2:-$default_config_path}"
+  config_path="${1:-$default_config_path}"
   "$ruby_path" -rrbconfig -e '\
     File.open("'"$config_path"'","w") { |file|
       RbConfig::CONFIG.sort.each{|key,value|
@@ -427,7 +451,7 @@ __rvm_record_ruby_configs()
     if
       [[ ! -L "${__dir}" && ! -s "${__dir}/config" && -x "${__dir}/bin/ruby" ]]
     then
-      __rvm_ruby_config_save "${__dir}/bin/ruby" ||
+      __rvm_ruby_config_save "${__dir}/bin/ruby" "${__dir}/config" ||
       {
         typeset string="${__dir##*/}"
         rvm_error "    Can not save config data for ruby: '${string}', most likely it is broken installation and you can:

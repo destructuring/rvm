@@ -19,17 +19,17 @@ rubinius_install_detect_required_ruby()
     (2.0.0)
       case "${rvm_ruby_patch_level}" in
         (rc1) ruby="ruby-1.9" ;;
-        (*)   ruby="ruby-2.0" ;;
+        (*)   ruby="ruby-2"   ;;
       esac
       ;;
     (head)
       case "$rvm_ruby_repo_branch" in
-        (1.8.7|1.9.3) ruby="ruby-1.9|ruby-2.0" ;;
-        (*)           ruby="ruby-2.0"          ;;
+        (1.8.7|1.9.3) ruby="ruby-1.9|ruby-2" ;;
+        (*)           ruby="ruby-2"          ;;
       esac
       ;;
     (*)
-      ruby="ruby-2.0"
+      ruby="ruby-2"
       ;;
   esac
   __rvm_ensure_has_mri_ruby "$ruby" ||
@@ -40,17 +40,37 @@ rubinius_install_detect_required_ruby()
   ruby="$(__rvm_mri_ruby "$ruby")"
 }
 
-rubinius_install_ensure_wrapper()
+rubinius_install_ensure_gem()
 {
-  typeset __binary=$1
-  shift
-  [[ -x "$rvm_wrappers_path/$ruby/${__binary}" ]] ||
-  {
-    if (( $# ))
-    then __rvm_log_command "install_${__binary}" "$rvm_ruby_string - #install ${__binary}" "$@" || return $?
-    fi
-    "${rvm_scripts_path:-${rvm_path}/scripts}"/wrapper "$ruby" --no-links ${__binary} || return $?
-  }
+  __rvm_which "$1" >/dev/null &&
+  [[ -x "$rvm_wrappers_path/$ruby/$1" ]] ||
+  __rvm_log_command "install.${2:-$1}" "$ruby - #install gem ${2:-$1}" gem install ${2:-$1} &&
+  __rvm_which "$1" >/dev/null &&
+  [[ -x "$rvm_wrappers_path/$ruby/$1" ]] ||
+  return $?
+}
+
+rubinius_install_ensure_wrappers()
+{
+  [[ -x "$rvm_wrappers_path/$ruby/ruby" && -x "$rvm_wrappers_path/$ruby/gem" ]] ||
+    __rvm_log_command "gemset.wrappers.rubinius" "$ruby - #generating wrappers" \
+    run_gem_wrappers_regenerate ||
+    return $?
+  rubinius_install_ensure_gem rake || return $?
+  rubinius_install_ensure_gem bundle bundler || return $?
+  __rvm_log_command "regenerate_binstubs" \
+    "$ruby - #regenerating binstubs" \
+    gem regenerate_binstubs ||
+    return $?
+}
+
+rubinius_install_setup_ruby()
+{
+  if [[ ${rvm_ignore_gemsets_flag:-0} -eq 0 ]]
+  then ruby="${ruby}@rubinius"
+  fi
+  __rvm_with "$ruby" rubinius_install_ensure_wrappers
+  __rvm_osx_ssl_certs_ensure_for_ruby "$rvm_wrappers_path/$ruby/ruby"
 }
 
 rubinius_install()
@@ -69,6 +89,7 @@ rubinius_install()
   __rvm_setup_compile_environment "${rvm_ruby_string}" || return $?
   __rvm_remove_rvm_from_path
   __rvm_conditionally_add_bin_path
+  rubinius_install_setup_ruby || return $?
 
   __rvm_fetch_ruby || return $?
 
@@ -95,26 +116,9 @@ rubinius_install()
   (( ${rvm_llvm_flag:=1} )) || rvm_configure_flags+=( --disable-llvm )
 
   if
-    [[ -f "Gemfile" && ${rvm_ignore_gemsets_flag:-0} -eq 0 ]]
-  then
-    ruby="${ruby}@rubinius"
-    (
-      rvm_create_flag=1
-      rvm_verbose_flag=0
-      __rvm_select "$ruby"
-    )
-  fi
-  rvm_log "Using $ruby for $rvm_ruby_string installation"
-  rubinius_install_ensure_wrapper ruby
-  __rvm_osx_ssl_certs_ensure_for_ruby "$rvm_wrappers_path/$ruby/ruby"
-  rubinius_install_ensure_wrapper gem
-  rubinius_install_ensure_wrapper rake "$rvm_wrappers_path/$ruby/gem" install rake
-  if
     [[ -f "Gemfile" ]]
   then
-    rubinius_install_ensure_wrapper bundle "$rvm_wrappers_path/$ruby/gem" install bundle
-    __rvm_log_command "bundle" "$rvm_ruby_string - #bundle install" \
-      "${rvm_ruby_make:-}$rvm_wrappers_path/$ruby/bundle" install ||
+    __rvm_log_command "bundle" "$ruby - #bundle install" "$rvm_wrappers_path/$ruby/bundle" install ||
       return $?
   fi
   if
@@ -130,8 +134,7 @@ rubinius_install()
   then rvm_ruby_make="CONFIGURE_ARGS=${rvm_configure_args## } "
   fi
 
-  __rvm_every_nth_dot 20 \
-    __rvm_log_command rake "$rvm_ruby_string - #compiling" \
+  __rvm_log_command rake "$rvm_ruby_string - #compiling" \
     "${rvm_ruby_make:-}$rvm_wrappers_path/$ruby/rake" install --trace ||
     return $?
   [[ -d "$rvm_ruby_home" && -f "$rvm_ruby_home/bin/rbx" ]] ||
@@ -177,11 +180,7 @@ about not returning non zero status in case of errors."
       ;;
   esac
 
-  (
-    rvm_create_flag=1 __rvm_use
-    __rvm_rubygems_create_link "$rvm_ruby_home/bin/ruby"
-  )
-  __rvm_post_install
-  __rvm_generate_wrappers
+  __rvm_initial_gemsets_create "$rvm_ruby_home/bin/ruby" &&
+  __rvm_post_install &&
   __rvm_fetch_ruby_cleanup
 }

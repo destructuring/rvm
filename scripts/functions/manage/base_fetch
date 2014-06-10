@@ -147,9 +147,8 @@ __rvm_fetch_ruby_package()
       then
         \mv "${rvm_src_path}/$(echo "$rvm_ruby_string" | __rvm_sed -e 's/-n.*//')" "${rvm_src_path}/$rvm_ruby_string"
       fi
-      rvm_log "$rvm_ruby_string - #extracted to ${rvm_src_path}/$rvm_ruby_string"
     else
-      rvm_log "$rvm_ruby_string - #extracted to ${rvm_src_path}/$rvm_ruby_string (already extracted)"
+      rvm_log "$rvm_ruby_string - #already extracted to ${rvm_src_path}/$rvm_ruby_string"
     fi
 
     true # for osx
@@ -164,7 +163,9 @@ __rvm_fetch_ruby_head_git()
           then
             if [[ -n "${rvm_ruby_major_version:-}" ]]
             then
-              if [[ -n "${rvm_ruby_minor_version:-}" ]]
+              if
+                [[ -n "${rvm_ruby_minor_version:-}" ]] &&
+                __rvm_version_compare "${rvm_ruby_version}" -lt 2.1.0
               then
                 rvm_ruby_repo_branch="ruby_${rvm_ruby_release_version:-1}_${rvm_ruby_major_version}_${rvm_ruby_minor_version}"
               else
@@ -301,10 +302,11 @@ __rvm_fetch_ruby_head_svn()
           [[ -d "${rvm_repos_path}/${rvm_ruby_interpreter}/.svn" ]]
         then
           rvm_log "Updating ruby from $rvm_ruby_url"
-          __rvm_run "svn.switch" "svn switch $rvm_ruby_url"
-          __rvm_run "svn.update" "svn update"
+          __rvm_log_command "svn.switch" "Switch to $rvm_ruby_url" svn switch $rvm_ruby_url
+          __rvm_log_command "svn.update" "Update svn" svn update
 
-          if [[ -n "${rvm_rev:-""}" ]]
+          if
+            [[ -n "${rvm_rev:-""}" ]]
           then
             __rvm_log_command "svn.checkout" "Checking out revision ${rvm_rev/-r/-r } from $rvm_ruby_url" \
               svn update -q ${rvm_rev/-r/-r }

@@ -3,11 +3,12 @@
 [ruby-]1.8.7[-p374]
 [ruby-]1.9.1[-p431]
 [ruby-]1.9.2[-p320]
-[ruby-]1.9.3[-p484]
-[ruby-]2.0.0-p195
-[ruby-]2.0.0[-p353]
-[ruby-]2.1.0
-[ruby-]2.1.0-head
+[ruby-]1.9.3[-p547]
+[ruby-]2.0.0-p451
+[ruby-]2.0.0[-p481]
+[ruby-]2.1.1
+[ruby-]2.1[.2]
+[ruby-]2.1-head
 ruby-head
 
 # GoRuby
@@ -27,14 +28,13 @@ mruby[-head]
 
 # JRuby
 jruby-1.6.8
-jruby-1.7.6
-jruby[-1.7.9]
+jruby[-1.7.12]
 jruby-head
 
 # Rubinius
 rbx-2.0.0
 rbx-2.1.1
-rbx[-2.2.1]
+rbx[-2.2.6]
 rbx-head
 
 # Ruby Enterprise Edition

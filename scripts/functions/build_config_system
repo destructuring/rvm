@@ -59,13 +59,6 @@ __rvm_setup_compile_environment_system_SmartOS()
   return 0
 }
 
-__rvm_setup_compile_environment_system_OpenIndiana()
-{
-  [[ "${_system_version}" =~ ^oi ]] || return 0
-  __rvm_update_configure_env CC="/usr/gcc/4.3/bin/gcc"
-  return 0
-}
-
 __rvm_setup_compile_environment_system_SunOS()
 {
   case "$1" in
@@ -111,8 +104,10 @@ __rvm_setup_compile_environment_system_BSD()
   then
     export AUTOCONF_VERSION
     AUTOCONF_VERSION="$(
-      ls -1 /usr/local/bin/autoreconf-* | __rvm_awk -F- '{print $NF}' |
-        __rvm_version_sort | __rvm_tail -n 1
+      ls -1 /usr/local/bin/autoreconf-* |
+      __rvm_awk -F- '{print $NF}' |
+      __rvm_version_sort |
+      __rvm_tail -n 1
     )"
   fi
   if
@@ -121,8 +116,10 @@ __rvm_setup_compile_environment_system_BSD()
     export AUTOMAKE_VERSION
     # FreeBSD might have automake-wrapper
     AUTOMAKE_VERSION="$(
-      ls -1 /usr/local/bin/automake-1* | __rvm_awk -F- '{print $NF}' |
-        __rvm_version_sort | __rvm_tail -n 1
+      ls -1 /usr/local/bin/automake-1* |
+      __rvm_awk -F- '{print $NF}' |
+      __rvm_version_sort |
+      __rvm_tail -n 1
     )"
   fi
 }
@@ -207,13 +204,20 @@ __rvm_setup_compile_environment_osx_compiler_find()
     __rvm_version_compare "${_system_version}" -ge 10.9
   then
     if
-      __rvm_setup_compile_environment_osx_compiler_clang_installed &&
-      __rvm_setup_compile_environment_osx_compiler_clang_latest
+      __rvm_version_compare "${1#ruby-}" -ge 2.1.0 &&
+      __rvm_which gcc >/dev/null
     then
-      export CC=/usr/bin/clang
+      export CC=gcc
     else
-      __rvm_setup_compile_environment_osx_compiler_find_clang ||
-      return $?
+      if
+        __rvm_setup_compile_environment_osx_compiler_clang_installed &&
+        __rvm_setup_compile_environment_osx_compiler_clang_latest
+      then
+        export CC=/usr/bin/clang
+      else
+        __rvm_setup_compile_environment_osx_compiler_find_clang ||
+        return $?
+      fi
     fi
     return 0
   fi
@@ -325,6 +329,9 @@ __rvm_setup_compile_environment_flags_tcltk()
 {
   case "$1" in
     (ruby*|ree*)
+      typeset __ruby_version="${1#*-}"
+      __ruby_version="${__ruby_version%%-*}"
+      __rvm_version_compare ${__ruby_version} -ge 2.1.1 ||
       [[ " ${rvm_configure_flags[*]} " == *" --with-tcl "*    ]] ||
       [[ " ${rvm_configure_flags[*]} " == *" --with-tk "*     ]] ||
       [[ " ${rvm_configure_flags[*]} " == *" --without-tcl "* ]] ||
@@ -339,5 +346,29 @@ __rvm_setup_compile_environment_system_OSX()
 {
   __rvm_setup_compile_environment_flags_tcltk  "$@" || return $?
   __rvm_setup_compile_environment_osx_compiler "$@" || return $?
+  true # OSX --trace FIX
+}
+
+__rvm_setup_compile_environment_system_Cygwin()
+{
+  __rvm_setup_compile_environment_flags_tcltk  "$@" || return $?
+  true # OSX --trace FIX
+}
+
+__rvm_setup_compile_environment_flags_dtrace()
+{
+  case "$1" in
+    (ruby*)
+      [[ " ${rvm_configure_flags[*]} " == *" --enable-dtrace "*  ]] ||
+      [[ " ${rvm_configure_flags[*]} " == *" --disable-dtrace "* ]] ||
+      rvm_configure_flags+=( --disable-dtrace )
+      ;;
+  esac
+  true # OSX --trace FIX
+}
+
+__rvm_setup_compile_environment_system_FreeBSD()
+{
+  __rvm_setup_compile_environment_flags_dtrace "$@" || return $?
   true # OSX --trace FIX
 }

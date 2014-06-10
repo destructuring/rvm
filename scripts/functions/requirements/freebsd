@@ -19,7 +19,7 @@ requirements_freebsd_pkgng_lib_installed()
 
 requirements_freebsd_pkgng_libs_install()
 {
-  __rvm_try_sudo pkg install "$@" || return $?
+  __rvm_try_sudo pkg install -y "$@" || return $?
 }
 
 requirements_freebsd_install_node()
@@ -66,7 +66,11 @@ requirements_freebsd_update_system()
 {
   case "${__lib_type}" in
     (freebsd_pkgng)
-      __rvm_try_sudo pkg update || return $?
+      if
+        [[ -s /usr/local/etc/pkg.conf ]]
+      then
+        __rvm_try_sudo pkg update || return $?
+      fi
       ;;
   esac
 }
@@ -81,7 +85,7 @@ requirements_freebsd_define()
       if
         is_head_or_disable_binary "$1"
       then
-        requirements_check jdk git
+        requirements_check openjdk git
         if is_jruby_post17 "$1"
         then __rvm_which mvn >/dev/null || requirements_check maven3
         else __rvm_which ant >/dev/null || requirements_check apache-ant

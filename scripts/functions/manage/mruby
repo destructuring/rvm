@@ -63,16 +63,18 @@ mruby_install()
     return $result
   fi
 
-  mkdir -p "$rvm_ruby_home/";
+  \mkdir -p "$rvm_ruby_home/"
+  \mkdir -p "$rvm_ruby_gem_home/bin"
+  \mkdir -p "$rvm_ruby_global_gems_path/bin"
 
-  rvm_ruby_make_install=${rvm_ruby_make_install:-"__rvm_cp -Rf \"${rvm_src_path}/$rvm_ruby_string\"/{bin,mrblib,include} \"$rvm_ruby_home/\""}
-  if __rvm_run "install" "$rvm_ruby_make_install" "$rvm_ruby_string - #installing"
-  then true
-  else
+  [[ -n "${rvm_ruby_make_install:-}" ]] || rvm_ruby_make_install=( __rvm_cp -Rf "${rvm_src_path}/$rvm_ruby_string"/{bin,mrblib,include} "$rvm_ruby_home/" )
+
+  __rvm_log_command "install" "$rvm_ruby_string - #installing" "${rvm_ruby_make_install[@]}" ||
+  {
     result=$?
     rvm_error "There has been an error while running make install. Halting the installation."
     return $result
-  fi
+  }
 
   typeset __bin_file __target_file
   for __bin_file in "$rvm_ruby_home/bin"/m*
@@ -82,14 +84,8 @@ mruby_install()
     ln -s "${__bin_file}" "${__target_file}"
   done
 
-  binaries=()
-  rvm_skip_gemsets_flag=1
-  rvm_create_flag=1 __rvm_use &&
-    __rvm_generate_wrappers &&
-    __rvm_log_command "chmod.bin" "" chmod +x "$rvm_ruby_home/bin"/* &&
-    __rvm_post_install ||
-    return $?
+  __rvm_ruby_config_save "$rvm_ruby_home/bin/ruby"
+  __rvm_fetch_ruby_cleanup || return $?
 
-  __rvm_fetch_ruby_cleanup
   rvm_log "Install of $rvm_ruby_string - #complete "
 }

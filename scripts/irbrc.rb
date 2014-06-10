@@ -19,7 +19,7 @@ begin
   # This technique was adopted from /etc/irbrc on OS X.
   histfile = File.expand_path(".irb-history", ENV["HOME"])
 
-  if File.exists?(histfile)
+  if File.exist?(histfile)
     lines = IO.readlines(histfile).collect { |line| line.chomp }
     Readline::HISTORY.push(*lines)
   end
@@ -38,10 +38,13 @@ end
 
 # Calculate the ruby string.
 rvm_ruby_string = ENV["rvm_ruby_string"] ||
-  ENV['GEM_HOME'].nil? ? `ruby -v`.match(/^([^ ]+ [^ ]+)/)[0].sub(/ /,'-') : ENV['GEM_HOME'].split(/\//).last.split(/@/).first
+  (ENV['GEM_HOME'] && ENV['GEM_HOME'].split(/\//).last.split(/@/).first) ||
+  ("#{RUBY_VERSION}-p#{RUBY_PATCHLEVEL}" rescue nil) ||
+  (RUBY_DESCRIPTION.split(" ")[1].sub('p', '-p') rescue nil ) ||
+  (`ruby -v` || '').split(" ")[1].sub('p', '-p')
 
 # cut ruby- ... everyone knows it's ruby
-rvm_ruby_string = $1 if rvm_ruby_string =~ /^ruby-(.*)/
+rvm_ruby_string = $1 if rvm_ruby_string =~ /^ruby[- ](.*)/
 
 # Set up the prompt to be RVM specific.
 @prompt = {
@@ -59,7 +62,7 @@ IRB.conf[:PROMPT_MODE] = :RVM if IRB.conf[:PROMPT_MODE] == :DEFAULT
 # Load the user's irbrc file, if possible.
 # Report any errors that occur.
 begin
-  load File.join(ENV["HOME"], ".irbrc") if File.exists?("#{ENV["HOME"]}/.irbrc")
+  load File.join(ENV["HOME"], ".irbrc") if File.exist?("#{ENV["HOME"]}/.irbrc")
 rescue LoadError => load_error
   puts load_error
 rescue => exception
